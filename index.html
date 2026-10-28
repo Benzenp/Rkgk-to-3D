@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>rkgk to 3D</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+      "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs",
+      "fflate": "https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <aside id="side">
+    <header>
+      <h1>rkgk to 3D</h1>
+      <p class="sub">졸라맨 스케치 → 3D 구도 레퍼런스</p>
+    </header>
+
+    <section>
+      <h2>1. 스케치 올리기</h2>
+      <label id="drop" class="drop">
+        <input id="file" type="file" accept="image/*,.psd" multiple hidden>
+        <strong>파일을 끌어다 놓거나 클릭</strong>
+        <span>인물별 레이어 PNG 여러 장, 또는 레이어가 있는 PSD</span>
+      </label>
+      <label class="check"><input id="color-split" type="checkbox"> 한 장에 인물마다 색을 달리 그렸어요 (색별로 분리)</label>
+      <p class="hint">다른 인물에게 가려지는 팔다리도 자기 레이어에 그려 주세요. 생략하면 그 관절은 추측으로 채워집니다.</p>
+      <div class="row">
+        <label>인식 모델
+          <select id="model">
+            <option value="full">기본 (full)</option>
+            <option value="heavy">정밀 (heavy, 느림)</option>
+          </select>
+        </label>
+        <label>신뢰도 기준 <output id="threshold-val">0.50</output>
+          <input id="threshold" type="range" min="0" max="1" step="0.05" value="0.5">
+        </label>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. 인물 <small>나중에 만든(위쪽) 레이어일수록 앞</small></h2>
+      <p id="empty" class="hint">아직 인물이 없습니다.</p>
+      <ul id="figures"></ul>
+    </section>
+
+    <section id="fig-panel" hidden>
+      <h2 id="fig-title">인물</h2>
+      <div class="buttons">
+        <button data-flip="body" title="정면 ↔ 뒤돌아섬">몸 방향 반전</button>
+      </div>
+      <p class="hint">팔다리 앞뒤 뒤집기 (밝은 쪽이 인형의 왼쪽)</p>
+      <div class="buttons grid2">
+        <button data-flip="la">왼팔</button>
+        <button data-flip="ra">오른팔</button>
+        <button data-flip="ll">왼다리</button>
+        <button data-flip="rl">오른다리</button>
+      </div>
+      <label>크기 <output id="scale-val">1.00</output>
+        <input id="scale" type="range" min="0.5" max="1.5" step="0.01" value="1">
+      </label>
+      <p class="hint">위치는 화면의 화살표를 끌어서 옮깁니다.</p>
+      <div class="buttons">
+        <button id="reset-pos">위치·크기 되돌리기</button>
+        <button id="deselect">선택 해제</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>3. 카메라와 저장</h2>
+      <label>화각 <output id="fov-val">35</output>°
+        <input id="fov" type="range" min="10" max="90" step="1" value="35">
+      </label>
+      <label class="check"><input id="grid" type="checkbox" checked> 바닥 격자 표시</label>
+      <div class="buttons">
+        <button id="frame">정면으로 맞추기</button>
+        <button id="export-png" class="primary" disabled>PNG 저장</button>
+        <button id="export-zip" class="primary" disabled>묶음 내보내기 (BVH+PNG+카메라)</button>
+      </div>
+      <details>
+        <summary>카메라 수치</summary>
+        <pre id="camera-info"></pre>
+      </details>
+    </section>
+  </aside>
+
+  <main>
+    <div id="viewport"></div>
+    <div id="status">스케치를 올리면 인물마다 마네킹 포즈가 잡힙니다. 왼쪽 드래그: 회전 · 오른쪽 드래그: 이동 · 휠: 줌</div>
+  </main>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
