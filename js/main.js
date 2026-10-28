@@ -70,21 +70,25 @@ const viewer = new Viewer($('#viewport'), {
   onFigureDrag: (f, phase) => {
     state.autoFrame = false; // 직접 배치하기 시작하면 카메라는 그대로 둔다
     f.offset.copy(f.mannequin.root.position).sub(f.auto);
-    if (phase === 'end') refresh();
+    if (phase === 'end') endEdit();
   },
   // 발밑 고리를 끌어 인형을 돌린다
   onFigureRotate: (f, deg, phase) => {
     f.yaw = Math.round(((deg % 360) + 540) % 360 - 180);
     if (f === state.selected) setYawLabel(f);
-    if (phase === 'end') refresh();
+    if (phase === 'end') endEdit();
   },
+  onLightDrag: (key, phase) => phase === 'end' && commitScene(),
   // 광원 구체를 누르면 켜고 끈다: 메뉴 체크와 맞춘다
-  onLightToggle: (key, on) => ($(`#light-${key}`).checked = on),
+  onLightToggle: (key, on) => {
+    $(`#light-${key}`).checked = on;
+    commitScene();
+  },
   // 3D에서 관절을 끌어 옮긴다
   onJointDrag: (f, index, point, phase) => {
     state.autoFrame = false;
     moveJointTo3D(f, index, point);
-    if (phase === 'end') refresh();
+    if (phase === 'end') endEdit();
     else livePose(f);
   },
 });
@@ -96,20 +100,89 @@ const board = new DrawingBoard($('#stage'), {
   width: PAPER[0],
   height: PAPER[1],
   colors: COLORS,
-  onChange: (ids) => {
-    $('#undo').disabled = !board.undoStack.length;
-    $('#redo').disabled = !board.redoStack.length;
-    markDirty(ids);
+  onChange: (ids) => markDirty(ids),
+  // 획 하나가 끝날 때마다 되돌리기 줄에 그림 항목을 남긴다
+  onCommit: () => {
+    history.past.push({ kind: 'board' });
+    history.future = [];
+    updateUndoButtons();
   },
   // 관절 도구로 그림 위의 관절 점을 끌어 옮긴다
   onJointDrag: (id, index, x, y, phase) => {
     const f = persons[id];
     if (!f.det) return;
     moveJointTo2D(f, index, x, y);
-    if (phase === 'end') refresh();
+    if (phase === 'end') endEdit();
     else livePose(f);
   },
 });
+
+// --- 되돌리기: 그림(획)과 3D 조작(배치·회전·크기·관절·광원)을 한 줄로 ---
+// 3D 쪽은 조작이 끝날 때마다 상태를 통째로 남긴다. 그림 쪽 되돌리기는 그리기 판이 맡는다.
+const history = { past: [], future: [] };
+const HISTORY_MAX = 200;
+let sceneNow = null;
+function sceneState() {
+  return {
+    persons: persons.map((p) => ({
+      offset: p.offset.clone(), yaw: p.yaw, scale: p.scale,
+      edits: Object.fromEntries(Object.entries(p.edits).map(([i, d]) => [i, d.clone()])),
+    })),
+    lights: Object.fromEntries(Object.entries(viewer.lights).map(([k, l]) => [k, { dir: l.dir.clone(), on: l.light.visible }])),
+  };
+}
+function commitScene() {
+  const now = sceneState();
+  if (sceneNow && JSON.stringify(sceneNow) !== JSON.stringify(now)) {
+    history.past.push({ kind: 'scene', before: sceneNow, after: now });
+    if (history.past.length > HISTORY_MAX) history.past.shift();
+    history.future = [];
+  }
+  sceneNow = now;
+  updateUndoButtons();
+}
+function endEdit() {
+  refresh();
+  commitScene();
+}
+function applyScene(s) {
+  s.persons.forEach((q, i) => {
+    const p = persons[i];
+    p.offset.copy(q.offset);
+    p.yaw = q.yaw;
+    p.scale = q.scale;
+    p.edits = Object.fromEntries(Object.entries(q.edits).map(([j, d]) => [j, d.clone()]));
+  });
+  for (const [k, l] of Object.entries(s.lights)) {
+    viewer.setLightDir(k, l.dir);
+    viewer.setLight(k, l.on);
+    $(`#light-${k}`).checked = l.on;
+  }
+  refresh();
+  sceneNow = sceneState();
+}
+function undo() {
+  board.commitSelection(); // 떠 있는 라쏘 조각은 먼저 내려놓는다 (그 자체가 되돌리기 항목이 된다)
+  const e = history.past.pop();
+  if (!e) return;
+  history.future.push(e);
+  if (e.kind === 'board') board.undo();
+  else applyScene(e.before);
+  updateUndoButtons();
+}
+function redo() {
+  board.commitSelection();
+  const e = history.future.pop();
+  if (!e) return;
+  history.past.push(e);
+  if (e.kind === 'board') board.redo();
+  else applyScene(e.after);
+  updateUndoButtons();
+}
+function updateUndoButtons() {
+  $('#undo').disabled = !history.past.length;
+  $('#redo').disabled = !history.future.length;
+}
 
 function setStatus(text, busy = false) {
   const el = $('#status');
@@ -619,8 +692,8 @@ function setSize(v) {
 
 document.querySelectorAll('[data-tool]').forEach((b) => b.addEventListener('click', () => setTool(b.dataset.tool)));
 $('#size').addEventListener('input', () => setSize(+$('#size').value));
-$('#undo').addEventListener('click', () => board.undo());
-$('#redo').addEventListener('click', () => board.redo());
+$('#undo').addEventListener('click', undo);
+$('#redo').addEventListener('click', redo);
 $('#clear').addEventListener('click', () => board.clearAll());
 $('#guides').addEventListener('click', () => {
   const on = !$('#guides').classList.contains('on');
@@ -635,10 +708,10 @@ window.addEventListener('keydown', (e) => {
   // 한글 입력 상태에서도 동작하도록 e.code를 쓴다
   if (mod && e.code === 'KeyZ') {
     e.preventDefault();
-    e.shiftKey ? board.redo() : board.undo();
+    e.shiftKey ? redo() : undo();
   } else if (mod && e.code === 'KeyY') {
     e.preventDefault();
-    board.redo();
+    redo();
   } else if (mod || e.altKey) {
     return;
   } else if (e.code === 'KeyB' || e.code === 'KeyP') setTool('pen');
@@ -714,14 +787,16 @@ $('#reset-pos').addEventListener('click', () => {
   f.offset.set(0, 0, 0);
   f.scale = 1;
   f.yaw = 0;
-  refresh();
+  endEdit();
 });
 $('#reset-joints').addEventListener('click', () => {
   const f = state.selected;
   if (!f) return;
   f.edits = {};
-  refresh();
+  endEdit();
 });
+$('#scale').addEventListener('change', commitScene);
+$('#yaw').addEventListener('change', commitScene);
 $('#deselect').addEventListener('click', () => select(null));
 
 // 수동 모드에서는 다 그린 뒤 인식 버튼(Enter)으로 인식한다. R은 자동/수동 전환.
@@ -760,7 +835,17 @@ $('#fov').addEventListener('input', () => {
   viewer.setFov(+$('#fov').value);
   updateCameraInfo();
 });
-for (const key of ['key', 'fill']) $(`#light-${key}`).addEventListener('change', (e) => viewer.setLight(key, e.target.checked));
+for (const key of ['key', 'fill']) $(`#light-${key}`).addEventListener('change', (e) => {
+  viewer.setLight(key, e.target.checked);
+  commitScene();
+});
+// 3D 편집 모드: 지금 하려는 일의 손잡이만 보인다
+function setViewMode(mode) {
+  viewer.setMode(mode);
+  for (const b of document.querySelectorAll('[data-mode]')) b.classList.toggle('on', b.dataset.mode === mode);
+}
+document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => setViewMode(b.dataset.mode)));
+sceneNow = sceneState();
 $('#grid').addEventListener('change', () => (viewer.grid.visible = $('#grid').checked));
 $('#frame').addEventListener('click', () => {
   state.autoFrame = true;
@@ -782,7 +867,6 @@ createBody('anime-female', COLORS[0])
     const dummy = new Mannequin(COLORS[0]);
     dummy.setBody(body);
     dummy.showHandles(true);
-    for (const m of Object.values(dummy.markers)) m.visible = true;
     return viewer.warmUp(dummy.root);
   })
   .catch((err) => console.warn('셰이더 미리 컴파일 실패', err));

@@ -17,11 +17,12 @@ function clampRect(r, w, h) {
 }
 
 export class DrawingBoard {
-  constructor(host, { width, height, colors, onChange, onJointDrag }) {
+  constructor(host, { width, height, colors, onChange, onCommit, onJointDrag }) {
     this.W = width;
     this.H = height;
     this.colors = colors;
     this.onChange = onChange;
+    this.onCommit = onCommit;
     this.onJointDrag = onJointDrag;
     this.tool = 'pen';
     this.active = 0;
@@ -258,6 +259,7 @@ export class DrawingBoard {
     this.undoStack.push(entry);
     if (this.undoStack.length > HISTORY_LIMIT) this.undoStack.shift();
     this.redoStack = [];
+    this.onCommit?.();
     this.#changed(entry);
   }
 

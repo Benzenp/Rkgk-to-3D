@@ -12,13 +12,13 @@ function makeLightOrb(name, color) {
   return overlaySprite(`orb-${name}`, (g, n) => {
     const grad = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
     grad.addColorStop(0, '#ffffff');
-    grad.addColorStop(0.16, '#ffffff');
-    grad.addColorStop(0.3, color);
-    grad.addColorStop(0.55, color + '66');
+    grad.addColorStop(0.14, '#ffffff');
+    grad.addColorStop(0.26, color);
+    grad.addColorStop(0.5, color + '33');
     grad.addColorStop(1, color + '00');
     g.fillStyle = grad;
     g.fillRect(0, 0, n, n);
-  }, 0.3, { order: 21 });
+  }, 0.2, { order: 21 });
 }
 
 function makeLabel() {
@@ -61,6 +61,8 @@ export class Viewer {
     this.onLightToggle = onLightToggle;
     this.selected = null;
     this.drag = null;
+    // 3D 편집 모드: layout(화살표 툴·회전 고리) | joint(관절 손잡이) | light(광원). 지금 모드의 표시만 보인다.
+    this.mode = 'layout';
     this.ray = new THREE.Raycaster();
     this.figures = [];
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -85,7 +87,7 @@ export class Viewer {
       const handle = makeLightOrb(key, color);
       handle.userData.light = key;
       const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-        new THREE.LineDashedMaterial({ color, dashSize: 0.04, gapSize: 0.05, depthTest: false, transparent: true, opacity: 0.5 }));
+        new THREE.LineDashedMaterial({ color, dashSize: 0.04, gapSize: 0.05, depthTest: false, transparent: true, opacity: 0.35 }));
       line.renderOrder = 19;
       this.scene.add(light, light.target, handle, line);
       this.lights[key] = { light, handle, line, dir: new THREE.Vector3(...dir).normalize() };
@@ -137,6 +139,11 @@ export class Viewer {
         this.onFigureDrag?.(fig, 'move');
       }
     });
+    // 화살표 툴은 축 화살표만 남기고(평면·가운데 손잡이는 몸통 끌기와 겹친다) 짙은 회색으로 칠한다
+    for (const group of [this.gizmo._gizmo.gizmo.translate, this.gizmo._gizmo.picker.translate]) {
+      for (const c of [...group.children]) if (['XY', 'YZ', 'XZ', 'XYZ'].includes(c.name)) group.remove(c);
+    }
+    this.gizmo._gizmo.gizmo.translate.traverse((o) => o.material?.color?.set(o.name === 'Y' ? 0x161616 : 0x5c5c5c));
     this.gizmoHelper = this.gizmo.getHelper();
     this.scene.add(this.gizmoHelper);
 
@@ -168,7 +175,7 @@ export class Viewer {
   }
 
   #handleAt(e) {
-    if (!this.selected) return null;
+    if (!this.selected || this.mode !== 'joint') return null;
     const hit = this.#aim(e).intersectObjects(Object.values(this.selected.mannequin.handles), false)[0];
     return hit ? { fig: this.selected, index: hit.object.userData.joint, point: hit.object.getWorldPosition(new THREE.Vector3()) } : null;
   }
@@ -176,10 +183,11 @@ export class Viewer {
   // 조명 손잡이나 회전 고리를 눌렀는지
   #gizmoAt(e) {
     const ray = this.#aim(e);
-    const handles = Object.values(this.lights).map((l) => l.handle);
-    const light = ray.intersectObjects(handles, false)[0];
-    if (light) return { kind: 'light', key: light.object.userData.light };
-    if (this.selected && this.ring.visible && ray.intersectObject(this.ringHit, false).length) return { kind: 'rotate', fig: this.selected };
+    if (this.mode === 'light' && this.figures.length) {
+      const light = ray.intersectObjects(Object.values(this.lights).map((l) => l.handle), false)[0];
+      if (light) return { kind: 'light', key: light.object.userData.light };
+    }
+    if (this.mode === 'layout' && this.selected && ray.intersectObject(this.ringHit, false).length) return { kind: 'rotate', fig: this.selected };
     return null;
   }
 
@@ -219,7 +227,11 @@ export class Viewer {
       this.drag = { kind: 'joint', ...handle, start, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(normal, handle.point) };
     } else {
       const body = this.#figureAt(e);
-      if (body) {
+      if (body && this.mode !== 'layout') {
+        // 관절·조명 모드에서는 인형을 누르면 고르기만 하고, 끌면 카메라가 돈다 (실수로 옮기지 않게)
+        this.drag = { kind: 'none', start, fig: body.fig };
+        return;
+      } else if (body) {
         // 인형은 잡은 높이의 수평면 위에서 끈다 (발 높이로 두면 카메라가 낮을 때 시선이 평면에 닿지 않는다)
         const root = body.fig.mannequin.root;
         const plane = new THREE.Plane(UP, -body.point.y);
@@ -295,7 +307,7 @@ export class Viewer {
     }
     // 끌지 않고 눌렀으면 선택: 인형이면 그 인물, 빈 곳이면 선택 해제
     if (d.kind === 'none' && Math.hypot(e.clientX - d.start[0], e.clientY - d.start[1]) > 4) return;
-    if (d.kind === 'figure' || d.kind === 'none') this.onSelect(d.kind === 'figure' ? d.fig : null);
+    if (d.kind === 'figure' || d.kind === 'none') this.onSelect(d.fig ?? null);
   }
 
   #render() {
@@ -306,9 +318,9 @@ export class Viewer {
       f.label.position.copy(head).add(new THREE.Vector3(0, 0.3 * f.mannequin.root.scale.y, 0));
     }
     // 비출 인물이 없으면 광원 손잡이도 숨긴다
-    for (const l of Object.values(this.lights)) l.handle.visible = l.line.visible = this.figures.length > 0;
+    for (const l of Object.values(this.lights)) l.handle.visible = l.line.visible = this.mode === 'light' && this.figures.length > 0;
     const sel = this.selected?.mannequin.root;
-    this.ring.visible = !!sel;
+    this.ring.visible = !!sel && this.mode === 'layout';
     if (sel) {
       // 그림 속 높이대로 떠 있는 인물도 있으니 바닥이 아니라 그 인형의 발 높이에 둔다
       this.ring.position.set(sel.position.x, this.selected.mannequin.bounds(this.ringBox).min.y + 0.005, sel.position.z);
@@ -454,12 +466,24 @@ export class Viewer {
     this.selected = fig ?? null;
     for (const f of this.figures) {
       f.mannequin.setSelected(f === fig);
-      f.mannequin.showHandles(f === fig);
+      f.mannequin.showHandles(f === fig && this.mode === 'joint');
       // 번호표는 고른 인물만 또렷하게, 나머지는 옅게
       f.label.material.opacity = !fig || f === fig ? 0.9 : 0.4;
     }
-    if (fig) this.gizmo.attach(fig.mannequin.root);
+    if (fig && this.mode === 'layout') this.gizmo.attach(fig.mannequin.root);
     else this.gizmo.detach();
+  }
+
+  setMode(mode) {
+    this.mode = mode;
+    this.#hover(null);
+    this.select(this.selected);
+  }
+
+  // 되돌리기에서 광원 방향을 되살린다
+  setLightDir(key, dir) {
+    this.lights[key].dir.copy(dir);
+    this.#placeLights();
   }
 
   // 보이지 않는 장면에 넣어 셰이더를 미리 컴파일한다 (이름표 스프라이트도 함께)
@@ -496,7 +520,7 @@ export class Viewer {
   // 현재 시점 그대로 PNG로 만든다. 선택 표시, 이름표, 신뢰도 마커는 빼고 그린다.
   capture(scale = 2) {
     const hidden = [this.ring, this.gizmoHelper, ...Object.values(this.lights).flatMap((l) => [l.handle, l.line]),
-      ...this.figures.flatMap((f) => [f.label, ...Object.values(f.mannequin.markers), ...Object.values(f.mannequin.handles)])];
+      ...this.figures.flatMap((f) => [f.label, ...Object.values(f.mannequin.handles)])];
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => (o.visible = false));
     for (const f of this.figures) f.mannequin.setSelected(false);

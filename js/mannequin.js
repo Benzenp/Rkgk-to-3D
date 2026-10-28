@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 
-// 3D 위에 겹쳐 그리는 표시(손잡이, 불확실 고리, 광원). 같은 그림은 텍스처 하나를 나눠 쓴다.
+// 3D 위에 겹쳐 그리는 표시(관절 손잡이, 광원). 같은 그림은 텍스처 하나를 나눠 쓴다.
 const textures = {};
-export function overlaySprite(name, draw, size, { opacity = 1, order = 10 } = {}) {
+function overlayTexture(name, draw) {
   if (!textures[name]) {
     const c = document.createElement('canvas');
     c.width = c.height = 128;
@@ -10,31 +10,32 @@ export function overlaySprite(name, draw, size, { opacity = 1, order = 10 } = {}
     textures[name] = new THREE.CanvasTexture(c);
     textures[name].colorSpace = THREE.SRGBColorSpace;
   }
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: textures[name], depthTest: false, opacity }));
+  return textures[name];
+}
+export function overlaySprite(name, draw, size, { opacity = 1, order = 10 } = {}) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: overlayTexture(name, draw), depthTest: false, opacity }));
   s.scale.set(size, size, 1);
   s.renderOrder = order;
   return s;
 }
 
-// 끌 수 있는 관절: 흰 점에 짙은 테두리
-const drawHandle = (g, n) => {
+// 끌 수 있는 관절은 마름모로 그린다 (원은 인물 번호표에만 쓴다). 신뢰도가 낮은 관절은 같은 마름모를 주황으로.
+const diamond = (fill, stroke) => (g, n) => {
   g.beginPath();
-  g.arc(n / 2, n / 2, n * 0.36, 0, Math.PI * 2);
-  g.fillStyle = 'rgba(255,255,255,0.9)';
+  g.moveTo(n / 2, n * 0.14);
+  g.lineTo(n * 0.86, n / 2);
+  g.lineTo(n / 2, n * 0.86);
+  g.lineTo(n * 0.14, n / 2);
+  g.closePath();
+  g.fillStyle = fill;
   g.fill();
-  g.lineWidth = n * 0.1;
-  g.strokeStyle = '#161616';
+  g.lineWidth = n * 0.09;
+  g.lineJoin = 'round';
+  g.strokeStyle = stroke;
   g.stroke();
 };
-// 신뢰도가 낮은 관절: 비어 있는 주황 고리 (손잡이와 겹쳐도 구별되게 더 크게)
-const drawLow = (g, n) => {
-  g.beginPath();
-  g.arc(n / 2, n / 2, n * 0.4, 0, Math.PI * 2);
-  g.lineWidth = n * 0.07;
-  g.setLineDash([n * 0.12, n * 0.07]);
-  g.strokeStyle = '#e08a12';
-  g.stroke();
-};
+const drawHandle = diamond('rgba(255,255,255,0.92)', '#161616');
+const drawLow = diamond('#ffd9a3', '#c46a00');
 
 // Mixamo식 뼈대. [이름, 부모, 부모 기준 휴지(T) 자세 오프셋(m)]
 // 인형은 +z를 바라보고 +y가 위, +x가 인형의 왼쪽이다. 휴지 자세에서는 모든 회전이 0이다.
@@ -154,20 +155,13 @@ export class Mannequin {
     this.#buildBody();
     this.capsules = this.meshes; // 인체 모델을 불러오기 전까지 보이는 단순 인형
     this.body = null;
-    this.markers = {};
-    for (const [, bone] of KEY_JOINTS) {
-      const m = overlaySprite('low', drawLow, 0.12, { opacity: 0.85, order: 10 });
-      m.visible = false;
-      if (bone === 'Head') m.position.set(0, 0.1, 0);
-      this.bones[bone].add(m);
-      this.markers[bone] = m;
-    }
-    // 고른 인물의 관절 손잡이: 잡아 끌면 그 관절이 옮겨진다. 관절 번호(인형 쪽)로 찾는다.
+    // 고른 인물의 관절 손잡이 (관절 모드에서만 보인다): 잡아 끌면 그 관절이 옮겨진다. 관절 번호(인형 쪽)로 찾는다.
     this.handles = {};
     for (const [index, bone] of KEY_JOINTS) {
-      const h = overlaySprite('handle', drawHandle, 0.06, { opacity: 0.7, order: 12 });
+      const h = overlaySprite('handle', drawHandle, 0.065, { opacity: 0.75, order: 12 });
       h.visible = false;
       h.userData.joint = index;
+      h.userData.bone = bone;
       if (bone === 'Head') h.position.set(0, 0.1, 0);
       this.bones[bone].add(h);
       this.handles[index] = h;
@@ -271,6 +265,8 @@ export class Mannequin {
   }
 
   setLowConfidence(boneNames) {
-    for (const [bone, m] of Object.entries(this.markers)) m.visible = boneNames.includes(bone);
+    for (const h of Object.values(this.handles)) {
+      h.material.map = boneNames.includes(h.userData.bone) ? overlayTexture('handle-low', drawLow) : overlayTexture('handle', drawHandle);
+    }
   }
 }
