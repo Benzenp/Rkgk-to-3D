@@ -1,17 +1,22 @@
 import { FilesetResolver, PoseLandmarker } from '@mediapipe/tasks-vision';
 
-const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
-const MODEL_BASE = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker';
+// 인식 엔진과 기본 모델은 앱과 함께 배포한다. 정밀 모델(30MB)만 고를 때 Google 저장소에서 받는다.
+const BASE = import.meta.env.BASE_URL;
 export const MODELS = {
-  full: `${MODEL_BASE}/pose_landmarker_full/float16/1/pose_landmarker_full.task`,
-  heavy: `${MODEL_BASE}/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task`,
+  full: `${BASE}models/pose_landmarker_full.task`,
+  heavy: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task',
 };
+
+async function wasmFileset() {
+  const name = (await FilesetResolver.isSimdSupported()) ? 'vision_wasm_internal' : 'vision_wasm_nosimd_internal';
+  return { wasmLoaderPath: `${BASE}mediapipe/${name}.js`, wasmBinaryPath: `${BASE}mediapipe/${name}.wasm` };
+}
 
 const cache = {};
 
 function getLandmarker(model) {
   cache[model] ??= (async () => {
-    const fileset = await FilesetResolver.forVisionTasks(WASM);
+    const fileset = await wasmFileset();
     // 스케치는 사진보다 인식 점수가 낮게 나오므로 검출 기준을 느슨하게 둔다
     const options = (delegate) => ({
       baseOptions: { modelAssetPath: MODELS[model], delegate },

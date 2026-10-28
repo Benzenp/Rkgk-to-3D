@@ -1,3 +1,5 @@
+import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
+import { registerSW } from 'virtual:pwa-register';
 import * as THREE from 'three';
 import { zipSync, strToU8 } from 'fflate';
 import { inkBounds, cropForDetection, silhouette } from './input.js';
@@ -529,6 +531,9 @@ $('#frame').addEventListener('click', () => {
 });
 $('#export-png').addEventListener('click', async () => download(await viewer.capture(), 'rkgk-view.png'));
 $('#export-zip').addEventListener('click', () => exportZip().catch((e) => setStatus(e.message)));
+
+// 오프라인에서도 쓸 수 있도록 서비스 워커를 등록한다. 새 버전은 다음에 열 때 자동으로 적용된다.
+registerSW({ immediate: true });
 
 setStatus('모델 준비 중', true);
 preload($('#model').value)

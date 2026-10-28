@@ -62,7 +62,7 @@ function prepare(scene) {
 }
 
 function loadTemplate(kind) {
-  templates[kind] ??= new GLTFLoader().loadAsync(`assets/bodies/${kind}.glb`).then((g) => prepare(g.scene));
+  templates[kind] ??= new GLTFLoader().loadAsync(`${import.meta.env.BASE_URL}assets/bodies/${kind}.glb`).then((g) => prepare(g.scene));
   return templates[kind];
 }
 

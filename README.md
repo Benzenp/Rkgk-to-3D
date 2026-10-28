@@ -5,13 +5,23 @@
 
 ## 실행
 
-빌드 과정이 없는 정적 페이지다. 화면 절반에 그리고, 나머지 절반에서 3D로 확인한다. ES 모듈을 쓰므로 `file://`로는 열리지 않고 정적 서버가 필요하다.
+Vite로 빌드하는 웹앱(PWA)이다. 화면 절반에 그리고, 나머지 절반에서 3D로 확인한다. Node 20.19 이상이 필요하다.
 
 ```sh
-python3 -m http.server 8000   # → http://localhost:8000
+npm install
+npm run dev       # 개발 서버 → http://localhost:5173
+npm run build     # dist/에 배포용 파일 생성
+npm run preview   # 빌드 결과 확인 → http://localhost:4173
 ```
 
-GitHub Pages 등에 그대로 올려도 된다. three.js, MediaPipe, fflate, Pretendard는 jsDelivr에서, 포즈 모델은 Google 저장소에서 불러온다.
+- 서버나 API 없이 전부 브라우저에서 돌아간다. 포즈 인식(MediaPipe)도 브라우저 안에서 실행된다.
+- 라이브러리, 글꼴, 인식 엔진(wasm), 기본 인식 모델, 인체 모델을 모두 앱과 함께 배포한다. 외부에서 받는 것은 설정에서 "정밀" 인식 모델(30MB)을 고를 때 Google 저장소에서 받는 파일뿐이다.
+- PWA라서 휴대폰·PC에 앱처럼 설치할 수 있고, 한 번 열면 오프라인에서도 동작한다. 첫 방문 때 약 25MB를 받아 둔다. 새 버전은 다음에 열 때 자동으로 적용된다.
+- 인식 엔진 wasm은 빌드할 때 `node_modules`에서 `public/mediapipe/`로 복사된다 (`vite.config.js`).
+
+### 배포 (GitHub Pages)
+
+`main`에 올리면 `.github/workflows/deploy.yml`이 빌드해서 GitHub Pages에 배포한다. 처음 한 번, 저장소 **Settings → Pages → Source**를 **GitHub Actions**로 바꿔야 한다. 상대 경로로 빌드하므로 `https://<계정>.github.io/<저장소>/` 같은 하위 경로에서도 동작한다. 다른 정적 호스팅(Cloudflare Pages, Netlify 등)에는 `dist/`를 그대로 올리면 된다.
 
 ## 사용법
 
@@ -52,13 +62,15 @@ GitHub Pages 등에 그대로 올려도 된다. three.js, MediaPipe, fflate, Pre
 | `js/mannequin.js` | Mixamo식 뼈대 마네킹, 관절 좌표 → 뼈 회전 계산 |
 | `js/body.js` | 인체 모델 불러오기, 뼈대 회전을 모델에 옮기기 |
 | `tools/build-bodies.mjs` | 원본 캐릭터를 웹용 마네킹 GLB로 변환 |
+| `vite.config.js` | 빌드, PWA(매니페스트·서비스 워커), 인식 엔진 복사 |
+| `public/` | 그대로 배포되는 파일: 인체 모델, 기본 인식 모델, 아이콘 |
 | `js/bvh.js` | 1프레임 BVH 내보내기 (cm, `mixamorig:` 이름, ZXY 회전) |
 | `js/viewer.js` | three.js 장면, 카메라, 선택·이동, PNG 캡처, 카메라 수치 |
 | `js/main.js` | 화면 연결, 인식 예약, 배치, 보정, 내보내기 |
 
 ### 인체 모델
 
-인물 카드에서 체형을 고른다: 여/남 × 애니/실사 (기본: 애니 여). 모두 CC0 모델이고 출처는 `assets/bodies/CREDITS.txt`에 있다.
+인물 카드에서 체형을 고른다: 여/남 × 애니/실사 (기본: 애니 여). 모두 CC0 모델이고 출처는 `public/assets/bodies/CREDITS.txt`에 있다.
 
 | 파일 | 원본 |
 | --- | --- |

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { NodeIO } from '@gltf-transform/core';
 import { prune } from '@gltf-transform/functions';
 
-const OUT = path.resolve(import.meta.dirname, '../assets/bodies');
+const OUT = path.resolve(import.meta.dirname, '../public/assets/bodies');
 
 const SIDES = [['l', 'left', 'Left'], ['r', 'right', 'Right']];
 
