@@ -12,8 +12,8 @@ function overlayTexture(name, draw) {
   }
   return textures[name];
 }
-export function overlaySprite(name, draw, size, { opacity = 1, order = 10 } = {}) {
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: overlayTexture(name, draw), depthTest: false, opacity }));
+export function overlaySprite(name, draw, size, { opacity = 1, order = 10, depthTest = false } = {}) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: overlayTexture(name, draw), depthTest, depthWrite: false, opacity }));
   s.scale.set(size, size, 1);
   s.renderOrder = order;
   return s;

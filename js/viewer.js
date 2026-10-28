@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { inkOn } from './color.js';
+import { overlaySprite } from './mannequin.js';
 
 const R2D = THREE.MathUtils.radToDeg;
 const UP = new THREE.Vector3(0, 1, 0);
@@ -10,14 +11,24 @@ const UP = new THREE.Vector3(0, 1, 0);
 // 짧은 화살표가 빛이 가는 쪽을, 바닥까지 내린 점선이 높이와 위치를 보여 준다. 주·보조는 색으로만 구별한다.
 function makeLightGizmo(key, color) {
   const geo = new THREE.SphereGeometry(0.055, 24, 16);
-  const core = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6, roughness: 0.4, transparent: true }));
+  // 스스로 빛나는 것처럼: 조명을 받지 않는 밝은 핵 + 주변으로 번지는 빛 (둘 다 인형 뒤에서는 가려진다)
+  const core = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.7), transparent: true }));
   core.userData.light = key;
+  const glow = overlaySprite(`glow-${key}`, (g, n) => {
+    const grad = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.22, color);
+    grad.addColorStop(0.45, color + '55');
+    grad.addColorStop(1, color + '00');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, n, n);
+  }, 0.36, { order: 17, depthTest: true });
   // 가려진 곳에서만 그려지는 옅은 겉모습: 인형 뒤에 있어도 찾아서 잡을 수 있게
   const ghost = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.3, depthWrite: false, depthFunc: THREE.GreaterDepth }));
   ghost.renderOrder = 18;
   const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, -1, 0), new THREE.Vector3(), 0.2, new THREE.Color(color).multiplyScalar(0.7), 0.06, 0.04);
   const handle = new THREE.Group();
-  handle.add(core, ghost, arrow);
+  handle.add(glow, core, ghost, arrow);
   const ink = new THREE.LineDashedMaterial({ color: 0x8a8a86, dashSize: 0.04, gapSize: 0.04, transparent: true, opacity: 0.6 });
   const drop = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), ink);
   // 바닥 표시는 원 대신 작은 십자 (원은 인물에만 쓴다)
@@ -25,7 +36,7 @@ function makeLightGizmo(key, color) {
   const mark = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(-s, 0, 0), new THREE.Vector3(s, 0, 0), new THREE.Vector3(0, 0, -s), new THREE.Vector3(0, 0, s),
   ]), new THREE.LineBasicMaterial({ color: 0x8a8a86, transparent: true, opacity: 0.8 }));
-  return { handle, core, arrow, drop, mark };
+  return { handle, core, glow, arrow, drop, mark };
 }
 
 function makeLabel() {
@@ -372,8 +383,7 @@ export class Viewer {
     const l = this.lights[key];
     l.light.visible = on;
     l.core.material.opacity = on ? 1 : 0.35;
-    l.core.material.emissiveIntensity = on ? 0.6 : 0;
-    l.arrow.visible = on;
+    l.glow.visible = l.arrow.visible = on;
     this.updateShadows();
   }
 
