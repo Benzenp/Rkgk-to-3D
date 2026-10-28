@@ -232,7 +232,8 @@ function markDirty(ids) {
   }
   clearTimeout(timer);
   if (state.auto) timer = setTimeout(processDirty, DEBOUNCE_MS);
-  else setStatus([summary(), '바뀐 그림은 인식 버튼(R)으로 인식해요'].filter(Boolean).join(' · '));
+  else setStatus([summary(), '다 그리면 인식을 눌러요'].filter(Boolean).join(' · '));
+  updateRecognize();
 }
 
 async function processDirty() {
@@ -247,6 +248,7 @@ async function processDirty() {
       refresh();
     }
     setStatus(summary());
+    updateRecognize();
   } catch (err) {
     console.error(err);
     setStatus('인식하지 못했어요 · ' + (err.message || err));
@@ -638,7 +640,8 @@ window.addEventListener('keydown', (e) => {
   else if (e.code === 'KeyE') setTool('eraser');
   else if (e.code === 'KeyL') setTool('lasso');
   else if (e.code === 'KeyV') setTool('joint');
-  else if (e.code === 'KeyR') recognizeNow();
+  else if (e.code === 'KeyR') setAuto(!state.auto);
+  else if (e.code === 'Enter' && !state.auto) recognizeNow();
   else if (/^Digit[1-6]$/.test(e.code)) setActive(+e.code.slice(5) - 1);
   else if (e.code === 'BracketLeft') setSize(board.sizes[board.tool] - 2);
   else if (e.code === 'BracketRight') setSize(board.sizes[board.tool] + 2);
@@ -716,19 +719,28 @@ $('#reset-joints').addEventListener('click', () => {
 });
 $('#deselect').addEventListener('click', () => select(null));
 
-// 자동 인식을 끄면, 다 그린 뒤 인식 버튼(R)으로 인식한다
+// 수동 모드에서는 다 그린 뒤 인식 버튼(Enter)으로 인식한다. R은 자동/수동 전환.
 function recognizeNow() {
   clearTimeout(timer);
   processDirty();
 }
+// 인식 버튼은 수동 모드에서만 보이고, 아직 인식하지 않은 획이 있을 때만 진하게 눌린다
+function updateRecognize() {
+  const pending = persons.some((p) => p.dirty);
+  $('#recognize').disabled = !pending;
+  $('#recognize').classList.toggle('on', pending);
+}
 function setAuto(on) {
   state.auto = on;
   saveSetting('auto', on);
-  $('#auto').checked = on;
+  $('#mode-auto').classList.toggle('on', on);
+  $('#mode-manual').classList.toggle('on', !on);
   $('#recognize').hidden = on;
+  updateRecognize();
   if (on && persons.some((p) => p.dirty)) recognizeNow();
 }
-$('#auto').addEventListener('change', () => setAuto($('#auto').checked));
+$('#mode-auto').addEventListener('click', () => setAuto(true));
+$('#mode-manual').addEventListener('click', () => setAuto(false));
 $('#recognize').addEventListener('click', recognizeNow);
 setAuto(state.auto);
 

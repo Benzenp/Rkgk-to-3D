@@ -115,6 +115,11 @@ svg {
 }
 .tools button:hover, .viewbar button:hover:not(:disabled), .more summary:hover { background: var(--soft); color: var(--ink); }
 .tools button.on { color: var(--ink); background: var(--soft); }
+/* 인식 방식(자동/수동)과 인식 버튼은 글자 버튼으로 */
+.tools .pill { display: inline-flex; width: auto; height: 30px; padding: 0 12px; border: 1px solid var(--line); background: #fff; color: var(--muted); }
+.tools .pill.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.tools .recog { gap: 8px; }
+.tools button[hidden] { display: none; }
 button:disabled { opacity: 0.35; cursor: default; }
 
 .swatch {

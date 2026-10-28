@@ -1,17 +1,45 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { inkOn } from './color.js';
+import { overlaySprite } from './mannequin.js';
 
 const R2D = THREE.MathUtils.radToDeg;
 const UP = new THREE.Vector3(0, 1, 0);
 
-// 3D 안에 띄우는 조명 손잡이: 색 원 안에 글자 한 자
-function makeLightHandle(text, color) {
-  const sprite = makeLabel();
-  drawLabel(sprite, text, color);
-  sprite.scale.set(0.16, 0.16, 1);
-  return sprite;
+// 광원 손잡이: 가운데가 하얗게 타고 바깥으로 번지는 빛 덩어리. 주·보조는 색으로만 구별한다.
+function makeLightOrb(name, color) {
+  return overlaySprite(`orb-${name}`, (g, n) => {
+    const grad = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.16, '#ffffff');
+    grad.addColorStop(0.3, color);
+    grad.addColorStop(0.55, color + '66');
+    grad.addColorStop(1, color + '00');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, n, n);
+  }, 0.3, { order: 21 });
 }
+
+// 인형 위아래 이동 손잡이: 짙은 원에 위아래 화살표
+const drawLift = (g, n) => {
+  g.beginPath();
+  g.arc(n / 2, n / 2, n * 0.4, 0, Math.PI * 2);
+  g.fillStyle = 'rgba(22,22,22,0.85)';
+  g.fill();
+  g.strokeStyle = '#fff';
+  g.lineWidth = n * 0.06;
+  g.lineCap = g.lineJoin = 'round';
+  g.beginPath();
+  g.moveTo(n * 0.5, n * 0.27);
+  g.lineTo(n * 0.5, n * 0.73);
+  g.moveTo(n * 0.38, n * 0.38);
+  g.lineTo(n * 0.5, n * 0.26);
+  g.lineTo(n * 0.62, n * 0.38);
+  g.moveTo(n * 0.38, n * 0.62);
+  g.lineTo(n * 0.5, n * 0.74);
+  g.lineTo(n * 0.62, n * 0.62);
+  g.stroke();
+};
 
 function makeLabel() {
   const canvas = document.createElement('canvas');
@@ -20,7 +48,7 @@ function makeLabel() {
   const map = new THREE.CanvasTexture(canvas);
   map.colorSpace = THREE.SRGBColorSpace; // 인물 색이 칩·색 버튼과 같게 보이도록
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, depthTest: false }));
-  sprite.scale.set(0.14, 0.14, 1);
+  sprite.scale.set(0.11, 0.11, 1);
   sprite.renderOrder = 20;
   sprite.userData.canvas = canvas;
   return sprite;
@@ -68,15 +96,15 @@ export class Viewer {
     // 주 광원(그림자)과 보조 광원. 손잡이를 끌면 인물들 가운데를 비추는 방향이 바뀐다.
     this.stage = { center: new THREE.Vector3(0, 0.9, 0), radius: 2.5, reach: 1 }; // radius: 광원 거리(그림자), reach: 손잡이 거리(화면 안)
     this.lights = {};
-    for (const [key, text, color, intensity, dir] of [
-      ['key', '주', '#f2b33d', 2.2, [0.45, 0.75, 0.5]],
-      ['fill', '보', '#8fb0e0', 0.7, [-0.55, 0.35, 0.75]],
+    for (const [key, color, intensity, dir] of [
+      ['key', '#ffb627', 2.2, [0.45, 0.75, 0.5]],
+      ['fill', '#5f9bff', 0.7, [-0.55, 0.35, 0.75]],
     ]) {
       const light = new THREE.DirectionalLight(0xffffff, intensity);
-      const handle = makeLightHandle(text, color);
+      const handle = makeLightOrb(key, color);
       handle.userData.light = key;
       const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-        new THREE.LineDashedMaterial({ color, dashSize: 0.06, gapSize: 0.05, depthTest: false, transparent: true, opacity: 0.8 }));
+        new THREE.LineDashedMaterial({ color, dashSize: 0.04, gapSize: 0.05, depthTest: false, transparent: true, opacity: 0.5 }));
       line.renderOrder = 19;
       this.scene.add(light, light.target, handle, line);
       this.lights[key] = { light, handle, line, dir: new THREE.Vector3(...dir).normalize() };
@@ -99,6 +127,10 @@ export class Viewer {
     this.ring.visible = false;
     this.ringHit = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.05, 6, 32), new THREE.MeshBasicMaterial({ visible: false }));
     this.ring.add(this.ringHit);
+    // 고리 오른쪽(화면 기준)의 위아래 이동 손잡이
+    this.lift = overlaySprite('lift', drawLift, 0.13, { opacity: 0.85, order: 13 });
+    this.lift.visible = false;
+    this.scene.add(this.lift);
     this.ringBox = new THREE.Box3();
     this.scene.add(this.ring);
     this.#placeLights();
@@ -150,6 +182,7 @@ export class Viewer {
     const handles = Object.values(this.lights).map((l) => l.handle);
     const light = ray.intersectObjects(handles, false)[0];
     if (light) return { kind: 'light', key: light.object.userData.light };
+    if (this.selected && this.lift.visible && ray.intersectObject(this.lift, false).length) return { kind: 'lift', fig: this.selected };
     if (this.selected && this.ring.visible && ray.intersectObject(this.ringHit, false).length) return { kind: 'rotate', fig: this.selected };
     return null;
   }
@@ -170,6 +203,12 @@ export class Viewer {
       const toCam = this.camera.getWorldDirection(new THREE.Vector3()).negate();
       const side = Math.sign(l.dir.dot(toCam)) || 1;
       this.drag = { kind: 'light', key: gizmo.key, start, toCam, side, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(toCam, this.stage.center) };
+    } else if (gizmo?.kind === 'lift') {
+      // 카메라를 마주 보는 세로 평면 위에서 위아래로만 끈다
+      const normal = this.camera.getWorldDirection(new THREE.Vector3()).setY(0).normalize();
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, this.lift.position);
+      const p = this.ray.ray.intersectPlane(plane, new THREE.Vector3()) ?? this.lift.position.clone();
+      this.drag = { kind: 'lift', fig: gizmo.fig, start, plane, y0: p.y, root0: gizmo.fig.mannequin.root.position.y };
     } else if (gizmo?.kind === 'rotate') {
       // 고리는 바닥면 위에서, 인형 중심을 도는 각도로 돌린다
       const root = gizmo.fig.mannequin.root;
@@ -201,7 +240,9 @@ export class Viewer {
   #move(e) {
     const d = this.drag;
     if (!d) {
-      this.renderer.domElement.classList.toggle('over', !!(this.#gizmoAt(e) || this.#handleAt(e)));
+      const handle = this.#gizmoAt(e) ? null : this.#handleAt(e);
+      this.#hover(handle && this.selected.mannequin.handles[handle.index]);
+      this.renderer.domElement.classList.toggle('over', !!(handle || this.#gizmoAt(e)));
       return;
     }
     if (d.kind === 'none') return;
@@ -214,6 +255,9 @@ export class Viewer {
       const root = d.fig.mannequin.root;
       root.position.x = hit.x - d.grab.x;
       root.position.z = hit.z - d.grab.z;
+      this.onFigureDrag?.(d.fig, 'move');
+    } else if (d.kind === 'lift') {
+      d.fig.mannequin.root.position.y = d.root0 + hit.y - d.y0;
       this.onFigureDrag?.(d.fig, 'move');
     } else if (d.kind === 'rotate') {
       const root = d.fig.mannequin.root;
@@ -240,7 +284,7 @@ export class Viewer {
     this.renderer.domElement.classList.remove('dragging');
     if (!d) return;
     if (d.moved) {
-      if (d.kind === 'figure') this.onFigureDrag?.(d.fig, 'end');
+      if (d.kind === 'figure' || d.kind === 'lift') this.onFigureDrag?.(d.fig, 'end');
       else if (d.kind === 'rotate') this.onFigureRotate?.(d.fig, R2D(d.fig.mannequin.root.rotation.y), 'end');
       else if (d.kind === 'light') this.onLightDrag?.(d.key, 'end');
       else if (d.kind === 'joint') this.onJointDrag?.(d.fig, d.index, this.#aim(e).ray.intersectPlane(d.plane, new THREE.Vector3()) ?? d.point, 'end');
@@ -259,12 +303,16 @@ export class Viewer {
       f.mannequin.bones.Head.getWorldPosition(head);
       f.label.position.copy(head).add(new THREE.Vector3(0, 0.3 * f.mannequin.root.scale.y, 0));
     }
+    // 비출 인물이 없으면 광원 손잡이도 숨긴다
+    for (const l of Object.values(this.lights)) l.handle.visible = l.line.visible = this.figures.length > 0;
     const sel = this.selected?.mannequin.root;
-    this.ring.visible = !!sel;
+    this.ring.visible = this.lift.visible = !!sel;
     if (sel) {
       // 그림 속 높이대로 떠 있는 인물도 있으니 바닥이 아니라 그 인형의 발 높이에 둔다
       this.ring.position.set(sel.position.x, this.selected.mannequin.bounds(this.ringBox).min.y + 0.005, sel.position.z);
       this.ring.scale.setScalar(sel.scale.x);
+      const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize();
+      this.lift.position.copy(this.ring.position).addScaledVector(right, 0.42 * sel.scale.x + 0.1).add(new THREE.Vector3(0, 0.07, 0));
     }
     this.renderer.render(this.scene, this.camera);
   }
@@ -331,11 +379,21 @@ export class Viewer {
     return out;
   }
 
+  // 마우스를 올린 관절 손잡이만 진하게
+  #hover(handle) {
+    if (this.hovered === handle) return;
+    if (this.hovered) this.hovered.material.opacity = 0.7;
+    if (handle) handle.material.opacity = 1;
+    this.hovered = handle;
+  }
+
   select(fig) {
     this.selected = fig ?? null;
     for (const f of this.figures) {
       f.mannequin.setSelected(f === fig);
       f.mannequin.showHandles(f === fig);
+      // 번호표는 고른 인물만 또렷하게, 나머지는 옅게
+      f.label.material.opacity = !fig || f === fig ? 0.9 : 0.4;
     }
   }
 
@@ -372,7 +430,7 @@ export class Viewer {
 
   // 현재 시점 그대로 PNG로 만든다. 선택 표시, 이름표, 신뢰도 마커는 빼고 그린다.
   capture(scale = 2) {
-    const hidden = [this.ring, ...Object.values(this.lights).flatMap((l) => [l.handle, l.line]),
+    const hidden = [this.ring, this.lift, ...Object.values(this.lights).flatMap((l) => [l.handle, l.line]),
       ...this.figures.flatMap((f) => [f.label, ...Object.values(f.mannequin.markers), ...Object.values(f.mannequin.handles)])];
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => (o.visible = false));

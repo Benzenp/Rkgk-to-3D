@@ -49,12 +49,18 @@
           <button class="tool" data-tool="joint" title="관절 — 인식된 관절 점 옮기기 (V)"><svg><use href="#i-joint"/></svg></button>
         </div>
         <div class="group" id="swatches"></div>
+        <div class="group recog">
+          <div class="seg" role="group" aria-label="인식 방식">
+            <button id="mode-auto" class="pill" title="그리는 동안 바로 인식 (R로 전환)">자동</button>
+            <button id="mode-manual" class="pill" title="인식 버튼을 누를 때만 인식 (R로 전환)">수동</button>
+          </div>
+          <button id="recognize" class="pill" title="지금 인식 (Enter)" hidden>인식</button>
+        </div>
         <div class="group size">
           <input id="size" type="range" min="1" max="60" value="8" aria-label="굵기">
           <output id="size-val">8</output>
         </div>
         <div class="group">
-          <button id="recognize" title="지금 인식 (R)" hidden><svg><use href="#i-scan"/></svg></button>
           <button id="undo" title="되돌리기 (Ctrl+Z)"><svg><use href="#i-undo"/></svg></button>
           <button id="redo" title="다시 하기 (Ctrl+Shift+Z)"><svg><use href="#i-redo"/></svg></button>
           <button id="guides" class="on" title="인식된 관절 보기"><svg><use href="#i-eye"/></svg></button>
@@ -152,7 +158,6 @@
               <label>신뢰도 기준 <output id="threshold-val">0.50</output>
                 <input id="threshold" type="range" min="0" max="1" step="0.05" value="0.5">
               </label>
-              <label class="check"><input id="auto" type="checkbox" checked> 그리는 동안 자동 인식</label>
               <label class="check"><input id="grid" type="checkbox" checked> 바닥 격자</label>
               <div><span class="label">인식 장치</span> <output id="device">준비 중</output></div>
               <div>
