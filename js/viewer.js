@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { inkOn } from './color.js';
 import { overlaySprite } from './mannequin.js';
 
@@ -19,27 +20,6 @@ function makeLightOrb(name, color) {
     g.fillRect(0, 0, n, n);
   }, 0.3, { order: 21 });
 }
-
-// 인형 위아래 이동 손잡이: 짙은 원에 위아래 화살표
-const drawLift = (g, n) => {
-  g.beginPath();
-  g.arc(n / 2, n / 2, n * 0.4, 0, Math.PI * 2);
-  g.fillStyle = 'rgba(22,22,22,0.85)';
-  g.fill();
-  g.strokeStyle = '#fff';
-  g.lineWidth = n * 0.06;
-  g.lineCap = g.lineJoin = 'round';
-  g.beginPath();
-  g.moveTo(n * 0.5, n * 0.27);
-  g.lineTo(n * 0.5, n * 0.73);
-  g.moveTo(n * 0.38, n * 0.38);
-  g.lineTo(n * 0.5, n * 0.26);
-  g.lineTo(n * 0.62, n * 0.38);
-  g.moveTo(n * 0.38, n * 0.62);
-  g.lineTo(n * 0.5, n * 0.74);
-  g.lineTo(n * 0.62, n * 0.62);
-  g.stroke();
-};
 
 function makeLabel() {
   const canvas = document.createElement('canvas');
@@ -128,10 +108,6 @@ export class Viewer {
     this.ring.visible = false;
     this.ringHit = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.05, 6, 32), new THREE.MeshBasicMaterial({ visible: false }));
     this.ring.add(this.ringHit);
-    // 고리 오른쪽(화면 기준)의 위아래 이동 손잡이
-    this.lift = overlaySprite('lift', drawLift, 0.13, { opacity: 0.85, order: 13 });
-    this.lift.visible = false;
-    this.scene.add(this.lift);
     this.ringBox = new THREE.Box3();
     this.scene.add(this.ring);
     this.#placeLights();
@@ -143,6 +119,26 @@ export class Viewer {
     this.orbit = new OrbitControls(this.camera, this.renderer.domElement);
     this.orbit.target.set(0, 0.9, 0);
     this.orbit.enableDamping = true;
+    // 고른 인형의 화살표 툴: 축을 끌면 그 방향(위아래 포함)으로만 옮긴다. 몸통 끌기와 함께 쓴다.
+    this.gizmo = new TransformControls(this.camera, this.renderer.domElement);
+    this.gizmo.size = 0.8;
+    this.gizmo.addEventListener('dragging-changed', (e) => {
+      this.orbit.enabled = !e.value;
+      const fig = this.figures.find((f) => f.mannequin.root === this.gizmo.object);
+      if (fig) {
+        this.updateShadows();
+        this.onFigureDrag?.(fig, e.value ? 'move' : 'end');
+      }
+    });
+    this.gizmo.addEventListener('objectChange', () => {
+      const fig = this.figures.find((f) => f.mannequin.root === this.gizmo.object);
+      if (fig) {
+        this.updateShadows();
+        this.onFigureDrag?.(fig, 'move');
+      }
+    });
+    this.gizmoHelper = this.gizmo.getHelper();
+    this.scene.add(this.gizmoHelper);
 
     // 고른 인물의 관절 손잡이를 끌면 관절이, 인형 몸을 끌면 인형이 바닥 위로 옮겨진다. 빈 곳을 끌면 카메라가 돈다.
     const el = this.renderer.domElement;
@@ -183,7 +179,6 @@ export class Viewer {
     const handles = Object.values(this.lights).map((l) => l.handle);
     const light = ray.intersectObjects(handles, false)[0];
     if (light) return { kind: 'light', key: light.object.userData.light };
-    if (this.selected && this.lift.visible && ray.intersectObject(this.lift, false).length) return { kind: 'lift', fig: this.selected };
     if (this.selected && this.ring.visible && ray.intersectObject(this.ringHit, false).length) return { kind: 'rotate', fig: this.selected };
     return null;
   }
@@ -196,6 +191,14 @@ export class Viewer {
   #down(e) {
     if (e.pointerType === 'mouse' && e.button !== 0) return; // 오른쪽 드래그는 카메라 이동
     const start = [e.clientX, e.clientY];
+    // 화살표 툴의 축 위를 눌렀으면 화살표 툴에 맡긴다 (터치는 미리 마우스를 올려 둘 수 없어서 여기서 확인한다)
+    if (this.gizmo.object) {
+      this.gizmo.pointerHover(this.gizmo._getPointer(e));
+      if (this.gizmo.axis) {
+        this.orbit.enabled = false; // 같은 누름으로 카메라가 돌지 않게 (놓으면 화살표 툴이 다시 켠다)
+        return;
+      }
+    }
     const gizmo = this.#gizmoAt(e);
     const handle = gizmo ? null : this.#handleAt(e);
     if (gizmo?.kind === 'light') {
@@ -204,12 +207,6 @@ export class Viewer {
       const toCam = this.camera.getWorldDirection(new THREE.Vector3()).negate();
       const side = Math.sign(l.dir.dot(toCam)) || 1;
       this.drag = { kind: 'light', key: gizmo.key, start, toCam, side, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(toCam, this.stage.center) };
-    } else if (gizmo?.kind === 'lift') {
-      // 카메라를 마주 보는 세로 평면 위에서 위아래로만 끈다
-      const normal = this.camera.getWorldDirection(new THREE.Vector3()).setY(0).normalize();
-      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, this.lift.position);
-      const p = this.ray.ray.intersectPlane(plane, new THREE.Vector3()) ?? this.lift.position.clone();
-      this.drag = { kind: 'lift', fig: gizmo.fig, start, plane, y0: p.y, root0: gizmo.fig.mannequin.root.position.y };
     } else if (gizmo?.kind === 'rotate') {
       // 고리는 바닥면 위에서, 인형 중심을 도는 각도로 돌린다
       const root = gizmo.fig.mannequin.root;
@@ -257,9 +254,6 @@ export class Viewer {
       root.position.x = hit.x - d.grab.x;
       root.position.z = hit.z - d.grab.z;
       this.onFigureDrag?.(d.fig, 'move');
-    } else if (d.kind === 'lift') {
-      d.fig.mannequin.root.position.y = d.root0 + hit.y - d.y0;
-      this.onFigureDrag?.(d.fig, 'move');
     } else if (d.kind === 'rotate') {
       const root = d.fig.mannequin.root;
       const angle = Math.atan2(hit.x - root.position.x, hit.z - root.position.z);
@@ -285,7 +279,7 @@ export class Viewer {
     this.renderer.domElement.classList.remove('dragging');
     if (!d) return;
     if (d.moved) {
-      if (d.kind === 'figure' || d.kind === 'lift') this.onFigureDrag?.(d.fig, 'end');
+      if (d.kind === 'figure') this.onFigureDrag?.(d.fig, 'end');
       else if (d.kind === 'rotate') this.onFigureRotate?.(d.fig, R2D(d.fig.mannequin.root.rotation.y), 'end');
       else if (d.kind === 'light') this.onLightDrag?.(d.key, 'end');
       else if (d.kind === 'joint') this.onJointDrag?.(d.fig, d.index, this.#aim(e).ray.intersectPlane(d.plane, new THREE.Vector3()) ?? d.point, 'end');
@@ -314,13 +308,11 @@ export class Viewer {
     // 비출 인물이 없으면 광원 손잡이도 숨긴다
     for (const l of Object.values(this.lights)) l.handle.visible = l.line.visible = this.figures.length > 0;
     const sel = this.selected?.mannequin.root;
-    this.ring.visible = this.lift.visible = !!sel;
+    this.ring.visible = !!sel;
     if (sel) {
       // 그림 속 높이대로 떠 있는 인물도 있으니 바닥이 아니라 그 인형의 발 높이에 둔다
       this.ring.position.set(sel.position.x, this.selected.mannequin.bounds(this.ringBox).min.y + 0.005, sel.position.z);
       this.ring.scale.setScalar(sel.scale.x);
-      const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize();
-      this.lift.position.copy(this.ring.position).addScaledVector(right, 0.42 * sel.scale.x + 0.1).add(new THREE.Vector3(0, 0.07, 0));
     }
     this.renderer.render(this.scene, this.camera);
   }
@@ -382,6 +374,59 @@ export class Viewer {
     this.#placeLights();
   }
 
+  // 클튜의 광원 공에 맞춰 보도록, 광원마다 회색 공 하나만 비춘 그림을 만든다.
+  // 클튜의 공이 화면 기준인지 장면 기준인지 확실하지 않아서, 지금 카메라에서 본 공과 정면에서 본 공을 함께 그린다.
+  lightBalls(cell = 240) {
+    const pad = 16, cap = 44;
+    const out = document.createElement('canvas');
+    out.width = 2 * cell + 3 * pad;
+    out.height = 2 * (cell + cap) + pad;
+    const g = out.getContext('2d');
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, out.width, out.height);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf6f6f4);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 32), new THREE.MeshStandardMaterial({ color: 0xd2d2d0, roughness: 0.7 }));
+    const ambient = new THREE.HemisphereLight(0xffffff, 0x888899, 0.35);
+    const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+    scene.add(ball, ambient, sun, sun.target);
+    const cam = new THREE.OrthographicCamera(-1.15, 1.15, 1.15, -1.15, 0.1, 20);
+    const views = [
+      ['카메라에서 본 공', this.camera.quaternion.clone()],
+      ['정면에서 본 공', new THREE.Quaternion()],
+    ];
+
+    const ratio = this.renderer.getPixelRatio();
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(cell, cell, false);
+    views.forEach(([viewName, q], row) => {
+      cam.quaternion.copy(q);
+      cam.position.set(0, 0, 5).applyQuaternion(q);
+      cam.updateMatrixWorld();
+      [['key', '주 광원 → 평행 광원 1'], ['fill', '보조 광원 → 평행 광원 2']].forEach(([key, name], col) => {
+        const l = this.lights[key];
+        sun.visible = l.light.visible;
+        sun.position.copy(l.dir).multiplyScalar(5);
+        this.renderer.render(scene, cam);
+        const x = pad + col * (cell + pad), y = pad / 2 + row * (cell + cap);
+        g.drawImage(this.renderer.domElement, x, y, cell, cell);
+        const info = this.lightInfo()[key];
+        g.fillStyle = '#161616';
+        g.font = '600 14px "Pretendard Variable", Pretendard, system-ui, sans-serif';
+        g.fillText(`${name}${l.light.visible ? '' : ' (꺼짐)'}`, x, y + cell + 18);
+        g.fillStyle = '#6b6b6b';
+        g.font = '12px "Pretendard Variable", Pretendard, system-ui, sans-serif';
+        g.fillText(`${viewName} · 방위 ${info.azimuth_deg}° · 높이 ${info.elevation_deg}°`, x, y + cell + 35);
+      });
+    });
+    this.renderer.setPixelRatio(ratio);
+    this.#resize();
+    ball.geometry.dispose();
+    ball.material.dispose();
+    return out;
+  }
+
   // 클튜 광원 설정에 옮길 방향 (방위: 정면(+Z)에서 오른쪽(+X)으로, 높이: 바닥에서 위로)
   lightInfo() {
     const out = {};
@@ -413,6 +458,8 @@ export class Viewer {
       // 번호표는 고른 인물만 또렷하게, 나머지는 옅게
       f.label.material.opacity = !fig || f === fig ? 0.9 : 0.4;
     }
+    if (fig) this.gizmo.attach(fig.mannequin.root);
+    else this.gizmo.detach();
   }
 
   // 보이지 않는 장면에 넣어 셰이더를 미리 컴파일한다 (이름표 스프라이트도 함께)
@@ -448,7 +495,7 @@ export class Viewer {
 
   // 현재 시점 그대로 PNG로 만든다. 선택 표시, 이름표, 신뢰도 마커는 빼고 그린다.
   capture(scale = 2) {
-    const hidden = [this.ring, this.lift, ...Object.values(this.lights).flatMap((l) => [l.handle, l.line]),
+    const hidden = [this.ring, this.gizmoHelper, ...Object.values(this.lights).flatMap((l) => [l.handle, l.line]),
       ...this.figures.flatMap((f) => [f.label, ...Object.values(f.mannequin.markers), ...Object.values(f.mannequin.handles)])];
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => (o.visible = false));

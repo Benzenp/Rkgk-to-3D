@@ -537,6 +537,7 @@ async function exportZip() {
   const files = {
     'view.png': new Uint8Array(await (await viewer.capture()).arrayBuffer()),
     'sketch.png': await canvasBytes(board.composite(state.order)),
+    'light-ball.png': await canvasBytes(viewer.lightBalls()),
   };
   const list = figs.map((f, i) => {
     const file = `${String(i + 1).padStart(2, '0')}_person${f.id + 1}.bvh`;
@@ -563,6 +564,7 @@ const README_TXT = `rkgk-to-3d 내보내기 묶음
 view.png    웹에서 저장한 현재 시점 이미지
 sketch.png  그린 스케치
 NN_*.bvh    인물별 포즈 (1프레임, Mixamo식 뼈 이름, cm 단위). 번호가 클수록 앞
+light-ball.png 주·보조 광원을 하나씩 비춘 공 (클립 스튜디오의 광원 공을 이 그림처럼 보이게 끌어 맞춘다)
 camera.json 카메라 수치, 주·보조 광원 방향, 인물별 위치·크기·회전·보정 내용
 
 클립 스튜디오에서 쓰기 (Ver. 3.1 이상, BVH 지원 버전)
@@ -571,7 +573,7 @@ camera.json 카메라 수치, 주·보조 광원 방향, 인물별 위치·크�
 3. 배치를 유지하려면 "위치 고정"을 끈다. 모든 BVH의 위치는 같은 좌표계(cm) 기준이다.
 4. view.png를 반투명하게 깔고 카메라를 맞춘다. camera.json의 수치를 참고한다.
 5. 광원은 camera.json의 lights를 참고한다. key는 클립 스튜디오의 "평행 광원 1", fill은 "평행 광원 2"(오브젝트 목록에서 추가)에 해당한다.
-   방향은 광원 공을 끌어 맞춘다 (azimuth: 정면에서 오른쪽으로 잰 각도, elevation: 바닥에서 위로 잰 각도). on이 false면 그 광원은 끈다.
+   방향은 광원 공을 light-ball.png처럼 보이게 끌어 맞춘다. 클립 스튜디오의 공이 화면 기준이면 "카메라에서 본 공", 장면 기준이면 "정면에서 본 공"을 본다 (azimuth: 정면에서 오른쪽으로 잰 각도, elevation: 바닥에서 위로 잰 각도). on이 false면 그 광원은 끈다.
 6. 손끝 같은 세부는 클립 스튜디오에서 조정한다.
 
 웹에서 돌린 방향은 BVH에 담기지만, 바꾼 크기는 BVH에 담기지 않는다. 데생 인형 크기는 camera.json의 scale을 보고 맞춘다.
