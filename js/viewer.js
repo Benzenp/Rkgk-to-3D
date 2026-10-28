@@ -71,13 +71,14 @@ function drawLabel(sprite, text, color) {
 }
 
 export class Viewer {
-  constructor(container, { onSelect, onFigureDrag, onFigureRotate, onJointDrag, onLightDrag }) {
+  constructor(container, { onSelect, onFigureDrag, onFigureRotate, onJointDrag, onLightDrag, onLightToggle }) {
     this.container = container;
     this.onSelect = onSelect;
     this.onFigureDrag = onFigureDrag;
     this.onFigureRotate = onFigureRotate;
     this.onJointDrag = onJointDrag;
     this.onLightDrag = onLightDrag;
+    this.onLightToggle = onLightToggle;
     this.selected = null;
     this.drag = null;
     this.ray = new THREE.Raycaster();
@@ -291,6 +292,13 @@ export class Viewer {
       if (d.kind === 'figure' && d.fig !== this.selected) this.onSelect(d.fig);
       return;
     }
+    // 광원을 끌지 않고 누르면 켜고 끈다
+    if (d.kind === 'light') {
+      const on = !this.lights[d.key].light.visible;
+      this.setLight(d.key, on);
+      this.onLightToggle?.(d.key, on);
+      return;
+    }
     // 끌지 않고 눌렀으면 선택: 인형이면 그 인물, 빈 곳이면 선택 해제
     if (d.kind === 'none' && Math.hypot(e.clientX - d.start[0], e.clientY - d.start[1]) > 4) return;
     if (d.kind === 'figure' || d.kind === 'none') this.onSelect(d.kind === 'figure' ? d.fig : null);
@@ -347,6 +355,15 @@ export class Viewer {
     this.updateShadows();
   }
 
+  // 꺼진 광원은 빛을 내지 않고, 손잡이만 흐리게 남겨서 다시 켜거나 옮길 수 있게 한다
+  setLight(key, on) {
+    const l = this.lights[key];
+    l.light.visible = on;
+    l.handle.material.opacity = on ? 1 : 0.3;
+    l.line.material.opacity = on ? 0.5 : 0.15;
+    this.updateShadows();
+  }
+
   updateShadows() {
     this.renderer.shadowMap.needsUpdate = true;
   }
@@ -372,6 +389,7 @@ export class Viewer {
       out[key] = {
         azimuth_deg: +R2D(Math.atan2(l.dir.x, l.dir.z)).toFixed(1),
         elevation_deg: +R2D(Math.asin(THREE.MathUtils.clamp(l.dir.y, -1, 1))).toFixed(1),
+        on: l.light.visible,
         direction: l.dir.toArray().map((n) => +n.toFixed(4)),
         intensity: l.light.intensity,
       };

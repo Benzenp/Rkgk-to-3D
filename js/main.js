@@ -78,6 +78,8 @@ const viewer = new Viewer($('#viewport'), {
     if (f === state.selected) setYawLabel(f);
     if (phase === 'end') refresh();
   },
+  // 광원 구체를 누르면 켜고 끈다: 메뉴 체크와 맞춘다
+  onLightToggle: (key, on) => ($(`#light-${key}`).checked = on),
   // 3D에서 관절을 끌어 옮긴다
   onJointDrag: (f, index, point, phase) => {
     state.autoFrame = false;
@@ -568,7 +570,8 @@ camera.json 카메라 수치, 주·보조 광원 방향, 인물별 위치·크�
 2. 각 데생 인형에 BVH 파일을 하나씩 적용한다.
 3. 배치를 유지하려면 "위치 고정"을 끈다. 모든 BVH의 위치는 같은 좌표계(cm) 기준이다.
 4. view.png를 반투명하게 깔고 카메라를 맞춘다. camera.json의 수치를 참고한다.
-5. 광원은 camera.json의 lights를 참고한다 (방위: 정면에서 오른쪽으로 잰 각도, 높이: 바닥에서 위로 잰 각도).
+5. 광원은 camera.json의 lights를 참고한다. key는 클립 스튜디오의 "평행 광원 1", fill은 "평행 광원 2"(오브젝트 목록에서 추가)에 해당한다.
+   방향은 광원 공을 끌어 맞춘다 (azimuth: 정면에서 오른쪽으로 잰 각도, elevation: 바닥에서 위로 잰 각도). on이 false면 그 광원은 끈다.
 6. 손끝 같은 세부는 클립 스튜디오에서 조정한다.
 
 웹에서 돌린 방향은 BVH에 담기지만, 바꾼 크기는 BVH에 담기지 않는다. 데생 인형 크기는 camera.json의 scale을 보고 맞춘다.
@@ -755,6 +758,7 @@ $('#fov').addEventListener('input', () => {
   viewer.setFov(+$('#fov').value);
   updateCameraInfo();
 });
+for (const key of ['key', 'fill']) $(`#light-${key}`).addEventListener('change', (e) => viewer.setLight(key, e.target.checked));
 $('#grid').addEventListener('change', () => (viewer.grid.visible = $('#grid').checked));
 $('#frame').addEventListener('click', () => {
   state.autoFrame = true;
