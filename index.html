@@ -25,6 +25,8 @@
       <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M5 19.5h14"/></symbol>
       <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18.5" cy="12" r="1.2"/></symbol>
       <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+      <symbol id="i-joint" viewBox="0 0 24 24"><path d="M5 4l5.5 15 2.2-6.3L19 10.5z"/></symbol>
+      <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="9" r="1.8"/><path d="M12 11v4M9.5 13h5M10.5 18l1.5-3 1.5 3"/></symbol>
       <symbol id="i-prev" viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6"/></symbol>
       <symbol id="i-next" viewBox="0 0 24 24"><path d="M9.5 6l6 6-6 6"/></symbol>
     </defs>
@@ -44,6 +46,7 @@
           <button class="tool on" data-tool="pen" title="펜 (B)"><svg><use href="#i-pen"/></svg></button>
           <button class="tool" data-tool="eraser" title="지우개 (E)"><svg><use href="#i-eraser"/></svg></button>
           <button class="tool" data-tool="lasso" title="라쏘 — 감싸서 옮기기, Delete로 지우기 (L)"><svg><use href="#i-lasso"/></svg></button>
+          <button class="tool" data-tool="joint" title="관절 — 인식된 관절 점 옮기기 (V)"><svg><use href="#i-joint"/></svg></button>
         </div>
         <div class="group" id="swatches"></div>
         <div class="group size">
@@ -51,6 +54,7 @@
           <output id="size-val">8</output>
         </div>
         <div class="group">
+          <button id="recognize" title="지금 인식 (R)" hidden><svg><use href="#i-scan"/></svg></button>
           <button id="undo" title="되돌리기 (Ctrl+Z)"><svg><use href="#i-undo"/></svg></button>
           <button id="redo" title="다시 하기 (Ctrl+Shift+Z)"><svg><use href="#i-redo"/></svg></button>
           <button id="guides" class="on" title="인식된 관절 보기"><svg><use href="#i-eye"/></svg></button>
@@ -120,7 +124,10 @@
           <span class="label">크기 <output id="scale-val">1.00</output></span>
           <input id="scale" type="range" min="0.5" max="1.5" step="0.01" value="1">
         </div>
-        <button id="reset-pos" class="ghost text">위치·크기 되돌리기</button>
+        <div class="pills">
+          <button id="reset-pos" class="ghost text">위치·크기 되돌리기</button>
+          <button id="reset-joints" class="ghost text">관절 되돌리기</button>
+        </div>
       </aside>
 
       <div class="viewbar">
@@ -141,6 +148,7 @@
               <label>신뢰도 기준 <output id="threshold-val">0.50</output>
                 <input id="threshold" type="range" min="0" max="1" step="0.05" value="0.5">
               </label>
+              <label class="check"><input id="auto" type="checkbox" checked> 그리는 동안 자동 인식</label>
               <label class="check"><input id="grid" type="checkbox" checked> 바닥 격자</label>
               <div><span class="label">인식 장치</span> <output id="device">준비 중</output></div>
               <div>

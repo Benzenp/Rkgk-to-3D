@@ -17,11 +17,12 @@ function clampRect(r, w, h) {
 }
 
 export class DrawingBoard {
-  constructor(host, { width, height, colors, onChange }) {
+  constructor(host, { width, height, colors, onChange, onJointDrag }) {
     this.W = width;
     this.H = height;
     this.colors = colors;
     this.onChange = onChange;
+    this.onJointDrag = onJointDrag;
     this.tool = 'pen';
     this.active = 0;
     this.sizes = { pen: 8, eraser: 36 };
@@ -69,11 +70,19 @@ export class DrawingBoard {
         el.setPointerCapture(e.pointerId);
       } catch {}
       const p = this.#pos(e);
-      if (this.tool === 'lasso') this.#lassoDown(p);
+      if (this.tool === 'joint') {
+        this.joint = this.#nearestJoint(p);
+        el.classList.toggle('dragging', !!this.joint);
+      } else if (this.tool === 'lasso') this.#lassoDown(p);
       else this.#strokeStart(p, this.#width(e));
     });
     el.addEventListener('pointermove', (e) => {
       this.hover = this.#pos(e);
+      if (this.tool === 'joint') {
+        if (this.joint) this.onJointDrag?.(this.joint.id, this.joint.index, ...this.hover, 'move');
+        else el.classList.toggle('over', !!this.#nearestJoint(this.hover));
+        return;
+      }
       if (this.stroke) {
         for (const ev of e.getCoalescedEvents?.() ?? [e]) this.#strokeTo(this.#pos(ev), this.#width(ev));
       } else if (this.lasso) {
@@ -85,6 +94,12 @@ export class DrawingBoard {
       this.#drawUI();
     });
     const up = () => {
+      if (this.joint) {
+        if (this.hover) this.onJointDrag?.(this.joint.id, this.joint.index, ...this.hover, 'end');
+        this.joint = null;
+        el.classList.remove('dragging');
+        return;
+      }
       if (this.stroke) this.#strokeEnd();
       else if (this.lasso) this.#lassoLift();
       this.drag = null;
@@ -96,6 +111,21 @@ export class DrawingBoard {
       this.hover = null;
       this.#drawUI();
     });
+  }
+
+  // --- 관절 도구: 인식된 관절 점을 끌어 옮긴다 ---
+
+  #nearestJoint([x, y]) {
+    // 화면에서 손가락 하나 정도(약 20px) 안에 있는 가장 가까운 점
+    const reach = (20 * this.W) / this.ui.getBoundingClientRect().width;
+    let best = null, bestD = reach;
+    for (const g of this.guides) {
+      for (const p of g.points) {
+        const d = Math.hypot(p.x - x, p.y - y);
+        if (d < bestD) [best, bestD] = [{ id: g.id, index: p.index }, d];
+      }
+    }
+    return best;
   }
 
   // --- 펜 · 지우개 ---
@@ -321,7 +351,7 @@ export class DrawingBoard {
       }
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
-      for (const [x, y, low] of g.points) {
+      for (const { x, y, low } of g.points) {
         ctx.fillStyle = low ? '#ff3b30' : '#fff';
         ctx.strokeStyle = low ? '#ff3b30' : g.color;
         ctx.lineWidth = 2.5;
@@ -358,7 +388,7 @@ export class DrawingBoard {
       ctx.stroke();
       ctx.setLineDash([]);
     }
-    if (this.hover && this.tool !== 'lasso') {
+    if (this.hover && this.tool !== 'lasso' && this.tool !== 'joint') {
       ctx.strokeStyle = this.tool === 'eraser' ? '#999' : this.colors[this.active];
       ctx.beginPath();
       ctx.arc(...this.hover, Math.max(2, this.sizes[this.tool] / 2), 0, Math.PI * 2);

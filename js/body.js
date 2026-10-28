@@ -106,9 +106,4 @@ export function applyBody(body, mannequin) {
     b.quaternion.copy(parentQ.invert().multiply(target));
     b.updateMatrixWorld(true);
   }
-  // 클릭 판정용 경계를 새 자세로 다시 계산하게 한다
-  for (const m of body.meshes) {
-    m.boundingSphere = null;
-    m.boundingBox = null;
-  }
 }

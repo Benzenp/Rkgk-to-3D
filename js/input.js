@@ -1,6 +1,8 @@
 // 그린 레이어를 포즈 인식에 넣기 좋은 모양으로 다듬는다.
 
-function newCanvas(w, h) {
+// 화면에서도, 백그라운드 워커(DOM 없음)에서도 쓸 수 있는 캔버스
+export function newCanvas(w, h) {
+  if (typeof document === 'undefined') return new OffscreenCanvas(w, h);
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
@@ -91,9 +93,7 @@ export function silhouette(canvas, { thicken = 0, close = 0 } = {}) {
     if (i >= w) push(i - w);
     if (i < w * (h - 1)) push(i + w);
   }
-  const out = document.createElement('canvas');
-  out.width = w;
-  out.height = h;
+  const out = newCanvas(w, h);
   const o = out.getContext('2d').createImageData(w, h);
   for (let i = 0; i < w * h; i++) {
     const v = outside[i] ? 255 : 51;

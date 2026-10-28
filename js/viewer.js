@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { inkOn } from './color.js';
 
 const R2D = THREE.MathUtils.radToDeg;
@@ -35,9 +34,14 @@ function drawLabel(sprite, text, color) {
 }
 
 export class Viewer {
-  constructor(container, { onSelect, onMove }) {
+  constructor(container, { onSelect, onFigureDrag, onJointDrag }) {
     this.container = container;
     this.onSelect = onSelect;
+    this.onFigureDrag = onFigureDrag;
+    this.onJointDrag = onJointDrag;
+    this.selected = null;
+    this.drag = null;
+    this.ray = new THREE.Raycaster();
     this.figures = [];
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -58,23 +62,12 @@ export class Viewer {
     this.orbit.target.set(0, 0.9, 0);
     this.orbit.enableDamping = true;
 
-    this.gizmo = new TransformControls(this.camera, this.renderer.domElement);
-    this.gizmo.size = 0.8;
-    this.gizmo.addEventListener('dragging-changed', (e) => {
-      this.orbit.enabled = !e.value;
-      if (!e.value) onMove?.(this.figures.find((f) => f.mannequin.root === this.gizmo.object));
-    });
-    this.gizmoHelper = this.gizmo.getHelper();
-    this.scene.add(this.gizmoHelper);
-
-    // 끌지 않고 클릭했을 때만 선택한다 (카메라 회전과 구분)
-    let down = null;
+    // 고른 인물의 관절 손잡이를 끌면 관절이, 인형 몸을 끌면 인형이 바닥 위로 옮겨진다. 빈 곳을 끌면 카메라가 돈다.
     const el = this.renderer.domElement;
-    el.addEventListener('pointerdown', (e) => (down = [e.clientX, e.clientY]));
-    el.addEventListener('pointerup', (e) => {
-      if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4 || this.gizmo.dragging) return;
-      this.#pick(e);
-    });
+    el.addEventListener('pointerdown', (e) => this.#down(e), true); // 카메라 조작보다 먼저 판단한다
+    el.addEventListener('pointermove', (e) => this.#move(e));
+    el.addEventListener('pointerup', (e) => this.#up(e));
+    el.addEventListener('pointercancel', (e) => this.#up(e));
 
     new ResizeObserver(() => this.#resize()).observe(container);
     this.#resize();
@@ -89,14 +82,86 @@ export class Viewer {
     this.camera.updateProjectionMatrix();
   }
 
-  #pick(e) {
+  #aim(e) {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
-    const ray = new THREE.Raycaster();
-    ray.setFromCamera(ndc, this.camera);
-    const hits = ray.intersectObjects(this.figures.flatMap((f) => f.mannequin.meshes), false);
-    const fig = hits.length ? this.figures.find((f) => f.mannequin.meshes.includes(hits[0].object)) : null;
-    this.onSelect(fig);
+    this.ray.setFromCamera(ndc, this.camera);
+    return this.ray;
+  }
+
+  #handleAt(e) {
+    if (!this.selected) return null;
+    const hit = this.#aim(e).intersectObjects(Object.values(this.selected.mannequin.handles), false)[0];
+    return hit ? { fig: this.selected, index: hit.object.userData.joint, point: hit.object.getWorldPosition(new THREE.Vector3()) } : null;
+  }
+
+  #figureAt(e) {
+    const hit = this.#aim(e).intersectObjects(this.figures.flatMap((f) => f.mannequin.meshes), false)[0];
+    return hit ? { fig: this.figures.find((f) => f.mannequin.meshes.includes(hit.object)), point: hit.point } : null;
+  }
+
+  #down(e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return; // 오른쪽 드래그는 카메라 이동
+    const start = [e.clientX, e.clientY];
+    const handle = this.#handleAt(e);
+    if (handle) {
+      // 관절은 카메라를 향한 평면 위에서 끈다
+      const normal = this.camera.getWorldDirection(new THREE.Vector3());
+      this.drag = { kind: 'joint', ...handle, start, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(normal, handle.point) };
+    } else {
+      const body = this.#figureAt(e);
+      if (body) {
+        // 인형은 잡은 높이의 수평면 위에서 끈다 (발 높이로 두면 카메라가 낮을 때 시선이 평면에 닿지 않는다)
+        const root = body.fig.mannequin.root;
+        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -body.point.y);
+        const grab = body.point.clone().sub(root.position);
+        this.drag = { kind: 'figure', fig: body.fig, start, plane, grab };
+      } else {
+        this.drag = { kind: 'none', start };
+        return; // 카메라 조작에 맡긴다
+      }
+    }
+    this.orbit.enabled = false;
+    this.renderer.domElement.setPointerCapture?.(e.pointerId);
+    this.renderer.domElement.classList.add('dragging');
+  }
+
+  #move(e) {
+    const d = this.drag;
+    if (!d) {
+      this.renderer.domElement.classList.toggle('over', !!this.#handleAt(e));
+      return;
+    }
+    if (d.kind === 'none') return;
+    if (!d.moved && Math.hypot(e.clientX - d.start[0], e.clientY - d.start[1]) < 4) return;
+    d.moved = true;
+    const hit = this.#aim(e).ray.intersectPlane(d.plane, new THREE.Vector3());
+    if (!hit) return;
+    if (d.kind === 'figure') {
+      const root = d.fig.mannequin.root;
+      root.position.x = hit.x - d.grab.x;
+      root.position.z = hit.z - d.grab.z;
+      this.onFigureDrag?.(d.fig, 'move');
+    } else {
+      this.onJointDrag?.(d.fig, d.index, hit, 'move');
+    }
+  }
+
+  #up(e) {
+    const d = this.drag;
+    this.drag = null;
+    this.orbit.enabled = true;
+    this.renderer.domElement.classList.remove('dragging');
+    if (!d) return;
+    if (d.moved) {
+      if (d.kind === 'figure') this.onFigureDrag?.(d.fig, 'end');
+      else if (d.kind === 'joint') this.onJointDrag?.(d.fig, d.index, this.#aim(e).ray.intersectPlane(d.plane, new THREE.Vector3()) ?? d.point, 'end');
+      if (d.kind === 'figure' && d.fig !== this.selected) this.onSelect(d.fig);
+      return;
+    }
+    // 끌지 않고 눌렀으면 선택: 인형이면 그 인물, 빈 곳이면 선택 해제
+    if (d.kind === 'none' && Math.hypot(e.clientX - d.start[0], e.clientY - d.start[1]) > 4) return;
+    if (d.kind !== 'joint') this.onSelect(d.kind === 'figure' ? d.fig : null);
   }
 
   #render() {
@@ -123,15 +188,24 @@ export class Viewer {
   }
 
   select(fig) {
-    for (const f of this.figures) f.mannequin.setSelected(f === fig);
-    if (fig) this.gizmo.attach(fig.mannequin.root);
-    else this.gizmo.detach();
+    this.selected = fig ?? null;
+    for (const f of this.figures) {
+      f.mannequin.setSelected(f === fig);
+      f.mannequin.showHandles(f === fig);
+    }
+  }
+
+  // 보이지 않는 장면에 넣어 셰이더를 미리 컴파일한다 (이름표 스프라이트도 함께)
+  async warmUp(object) {
+    const scene = new THREE.Scene();
+    scene.add(...this.scene.children.filter((o) => o.isLight).map((l) => l.clone()), object, makeLabel());
+    await this.renderer.compileAsync(scene, this.camera);
   }
 
   // 모든 인물이 화면에 들어오도록 카메라를 정면에 둔다
   frameAll() {
-    const box = new THREE.Box3();
-    for (const f of this.figures) box.expandByObject(f.mannequin.root);
+    const box = new THREE.Box3(), part = new THREE.Box3();
+    for (const f of this.figures) box.union(f.mannequin.bounds(part));
     if (box.isEmpty()) return;
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
@@ -154,7 +228,7 @@ export class Viewer {
 
   // 현재 시점 그대로 PNG로 만든다. 선택 표시, 이름표, 신뢰도 마커는 빼고 그린다.
   capture(scale = 2) {
-    const hidden = [this.gizmoHelper, ...this.figures.flatMap((f) => [f.label, ...Object.values(f.mannequin.markers)])];
+    const hidden = this.figures.flatMap((f) => [f.label, ...Object.values(f.mannequin.markers), ...Object.values(f.mannequin.handles)]);
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => (o.visible = false));
     for (const f of this.figures) f.mannequin.setSelected(false);
@@ -166,7 +240,7 @@ export class Viewer {
     this.renderer.setPixelRatio(ratio);
     this.#resize();
     hidden.forEach((o, i) => (o.visible = was[i]));
-    this.select(this.gizmo.object ? this.figures.find((f) => f.mannequin.root === this.gizmo.object) : null);
+    this.select(this.selected);
     return promise;
   }
 

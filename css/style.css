@@ -83,6 +83,12 @@ svg {
 .paper .guide { z-index: 50; }
 .paper .ui { z-index: 60; pointer-events: auto; touch-action: none; cursor: none; }
 .paper .ui[data-tool="lasso"] { cursor: crosshair; }
+.paper .ui[data-tool="joint"] { cursor: default; }
+.paper .ui[data-tool="joint"].over { cursor: grab; }
+.paper .ui[data-tool="joint"].dragging { cursor: grabbing; }
+#viewport canvas.over { cursor: grab; }
+#viewport canvas.dragging { cursor: grabbing; }
+.ghost.text + .ghost.text { margin-left: 12px; }
 
 .tools {
   display: flex;
@@ -117,22 +123,16 @@ button:disabled { opacity: 0.35; cursor: default; }
   height: 28px !important;
   border-radius: 50% !important;
 }
-/* 색 버튼 안의 번호가 상단 칩의 "인물 N"과 짝이다 */
-.swatch .num {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
+.swatch::before {
+  content: "";
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: var(--c);
-  color: var(--on);
-  font-size: 12px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
   transition: transform 0.15s;
 }
 .swatch.on { background: transparent !important; outline: 1.5px solid var(--c); outline-offset: -1px; }
-.swatch.on .num { transform: scale(1.1); }
+.swatch.on::before { transform: scale(1.15); }
 
 .size { gap: 10px; }
 .size output { width: 20px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }

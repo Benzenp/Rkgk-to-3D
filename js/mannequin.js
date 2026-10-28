@@ -128,6 +128,18 @@ export class Mannequin {
       this.bones[bone].add(m);
       this.markers[bone] = m;
     }
+    // 고른 인물의 관절 손잡이: 잡아 끌면 그 관절이 옮겨진다. 관절 번호(인형 쪽)로 찾는다.
+    this.handles = {};
+    const handleMat = new THREE.MeshBasicMaterial({ color: 0x161616, depthTest: false, transparent: true, opacity: 0.9 });
+    for (const [index, bone] of KEY_JOINTS) {
+      const h = new THREE.Mesh(new THREE.SphereGeometry(0.026, 12, 8), handleMat);
+      h.renderOrder = 12;
+      h.visible = false;
+      h.userData.joint = index;
+      if (bone === 'Head') h.position.set(0, 0.1, 0);
+      this.bones[bone].add(h);
+      this.handles[index] = h;
+    }
   }
 
   #seg(bone, from, to, r, side) {
@@ -168,17 +180,29 @@ export class Mannequin {
     }
   }
 
+  // 인형이 차지하는 공간. 인체 모델 대신 같은 뼈대를 따르는 단순 인형으로 잰다
+  // (피부를 입힌 모델은 경계를 꼭짓점마다 다시 계산해야 해서, 획마다 재면 화면이 멈칫한다)
+  bounds(box = new THREE.Box3()) {
+    box.makeEmpty();
+    this.root.updateWorldMatrix(true, true);
+    for (const m of this.capsules) box.expandByObject(m);
+    return box;
+  }
+
+  showHandles(on) {
+    for (const h of Object.values(this.handles)) h.visible = on;
+  }
+
   setSelected(on) {
     for (const m of [...Object.values(this.mats), this.body?.material]) m?.emissive.setHex(on ? 0x333333 : 0x000000);
   }
 
-  // 보이는 모양을 인체 모델(body.js)로 바꾼다. 클릭 판정도 모델로 한다.
+  // 보이는 모양을 인체 모델(body.js)로 바꾼다. 클릭 판정은 가볍게 숨긴 캡슐로 계속 한다.
   setBody(body) {
     if (this.body) this.root.remove(this.body.root);
     this.body = body;
     this.root.add(body.root);
     for (const m of this.capsules) m.visible = false;
-    this.meshes = body.meshes;
   }
 
   // lm: 인물 공간 좌표(m, 엉덩이 중심, three.js 축)의 MediaPipe 관절 33개
