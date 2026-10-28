@@ -36,7 +36,7 @@ GitHub Pages 등에 그대로 올려도 된다. three.js, MediaPipe, fflate, Pre
 
 **3D (오른쪽)**
 - 왼쪽 드래그로 회전, 오른쪽 드래그로 이동, 휠로 줌. 카메라를 직접 움직이기 전까지는 그릴 때마다 모든 인물이 보이도록 맞춰지고, 맞추기 버튼을 누르면 다시 자동으로 맞춘다.
-- 위쪽 칩이나 마네킹을 누르면 보정 카드가 열린다: 몸 앞뒤 반전, 팔다리별 앞뒤 뒤집기, 앞뒤 순서, 크기. 위치는 화살표를 끌어서 옮긴다. 인형의 밝은 쪽이 왼쪽이다.
+- 위쪽 칩이나 마네킹을 누르면 보정 카드가 열린다: 체형(여/남 · 애니/실사), 몸 앞뒤 반전, 팔다리별 앞뒤 뒤집기, 앞뒤 순서, 크기. 위치는 화살표를 끌어서 옮긴다. 인형의 밝은 쪽이 왼쪽이다.
 - 아직 사람으로 인식되지 않은 색은 칩으로만 보이고 3D와 내보내기에서는 빠진다.
 - PNG 저장: 현재 시점 그대로 (선택 표시·이름표 제외, 2배 해상도)
 - 묶음 내보내기: `view.png` + `sketch.png` + 인물별 `NN_personN.bvh` + `camera.json` + 안내문을 ZIP으로 내려받는다.
@@ -50,9 +50,29 @@ GitHub Pages 등에 그대로 올려도 된다. three.js, MediaPipe, fflate, Pre
 | `js/input.js` | 선 영역 찾기, 잘라내기, 실루엣 변환 |
 | `js/pose.js` | MediaPipe Pose Landmarker 실행 (GPU 실패 시 CPU) |
 | `js/mannequin.js` | Mixamo식 뼈대 마네킹, 관절 좌표 → 뼈 회전 계산 |
+| `js/body.js` | 인체 모델 불러오기, 뼈대 회전을 모델에 옮기기 |
+| `tools/build-bodies.mjs` | 원본 캐릭터를 웹용 마네킹 GLB로 변환 |
 | `js/bvh.js` | 1프레임 BVH 내보내기 (cm, `mixamorig:` 이름, ZXY 회전) |
 | `js/viewer.js` | three.js 장면, 카메라, 선택·이동, PNG 캡처, 카메라 수치 |
 | `js/main.js` | 화면 연결, 인식 예약, 배치, 보정, 내보내기 |
+
+### 인체 모델
+
+인물 카드에서 체형을 고른다: 여/남 × 애니/실사 (기본: 애니 여). 모두 CC0 모델이고 출처는 `assets/bodies/CREDITS.txt`에 있다.
+
+| 파일 | 원본 |
+| --- | --- |
+| `anime-female.glb`, `anime-male.glb` | VRoid Studio 샘플 HairSample_Female / HairSample_Male |
+| `real-female.glb`, `real-male.glb` | Quaternius Universal Base Characters (무료판, 히어로 체형) |
+
+포즈 계산과 BVH 내보내기는 `js/mannequin.js`의 뼈대가 맡고, 인체 모델(`js/body.js`)은 그 뼈 회전을 따라 한다. 모델마다 휴지 자세의 팔다리 방향을 우리 뼈대에 맞춰 보정하고, 엉덩이 높이가 같아지도록 크기를 맞춘다.
+
+모델을 다시 만들려면 원본을 받아 둔 뒤 실행한다.
+
+```sh
+npm install
+npm run build:bodies -- "<Universal Base Characters[Standard]/Base Characters/Godot - UE>" "<HairSample_*.vrm이 있는 폴더>"
+```
 
 ### 포즈 추출
 

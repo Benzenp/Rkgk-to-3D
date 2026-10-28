@@ -6,6 +6,7 @@ import { Mannequin, KEY_JOINTS } from './mannequin.js';
 import { toBVH } from './bvh.js';
 import { Viewer } from './viewer.js';
 import { DrawingBoard } from './board.js';
+import { createBody, applyBody } from './body.js';
 
 const $ = (s) => document.querySelector(s);
 // 색 하나가 인물 한 명이다
@@ -29,6 +30,7 @@ const persons = COLORS.map((color, id) => ({
   id, color, name: `인물 ${id + 1}`,
   mannequin: null, box: null, det: null, px: null, anchor: null, low: [],
   flips: {}, offset: new THREE.Vector3(), scale: 1, auto: new THREE.Vector3(), dirty: false,
+  sex: 'female', style: 'anime', bodyKind: null,
 }));
 // 처음 그린 순서 (뒤 → 앞). 나중에 그린 인물일수록 앞
 const state = { order: [], selected: null, autoFrame: true };
@@ -94,6 +96,7 @@ function poseFigure(fig) {
   const m = fig.mannequin;
   const { lm, vis } = figureLandmarks(fig);
   m.applyLandmarks(lm);
+  if (m.body) applyBody(m.body, m);
   const thr = +$('#threshold').value;
   const low = KEY_JOINTS.filter(([i]) => vis[i] < thr);
   fig.low = low.map(([, , label]) => label);
@@ -122,12 +125,30 @@ async function analyze(p) {
   }
   if (!state.order.includes(p.id)) state.order.push(p.id);
   p.mannequin ??= new Mannequin(p.color);
+  ensureBody(p);
   const crop = cropForDetection(layer, p.box);
   p.det = await detectBest(crop.canvas, $('#model').value);
   p.px = p.det ? p.det.image.map((l) => crop.toSource(l.x, l.y)) : null;
   p.anchor = p.det
     ? [(p.px[23][0] + p.px[24][0]) / 2, (p.px[23][1] + p.px[24][1]) / 2]
     : [p.box.x + p.box.w / 2, p.box.y + p.box.h / 2];
+}
+
+// 고른 체형의 인체 모델을 불러와 붙인다. 불러오는 동안은 단순 인형이 보인다.
+function ensureBody(p) {
+  const kind = `${p.style}-${p.sex}`;
+  if (p.bodyKind === kind) return;
+  p.bodyKind = kind;
+  createBody(kind, p.color)
+    .then((body) => {
+      if (p.bodyKind !== kind) return;
+      p.mannequin.setBody(body);
+      refresh();
+    })
+    .catch((err) => {
+      console.error(err);
+      setStatus('인체 모델을 불러오지 못했어요');
+    });
 }
 
 // 획이 끝날 때마다 바뀐 인물만 다시 인식한다. 인식 중에 또 그리면 끝난 뒤 이어서 처리한다.
@@ -197,7 +218,12 @@ function layout() {
   for (const f of figs) f.mannequin.root.position.set((f.anchor[0] - PAPER[0] / 2) * s, -f.anchor[1] * s - 1.0, 0);
   // 가장 낮은 발이 바닥(y=0)에 닿도록 전체를 올린다
   let minY = Infinity;
-  for (const f of figs) minY = Math.min(minY, new THREE.Box3().setFromObject(f.mannequin.root).min.y);
+  for (const f of figs) {
+    // 인체 모델의 경계는 현재 자세·위치로 다시 계산한다
+    f.mannequin.root.updateMatrixWorld(true);
+    for (const m of f.mannequin.body?.meshes ?? []) m.boundingBox = null;
+    minY = Math.min(minY, new THREE.Box3().setFromObject(f.mannequin.root).min.y);
+  }
   figs.forEach((f, i) => {
     const root = f.mannequin.root;
     root.position.y -= minY;
@@ -284,6 +310,8 @@ function renderCard() {
     btn.classList.toggle('on', !!fig.flips[btn.dataset.flip]);
     btn.disabled = !fig.det;
   }
+  for (const btn of document.querySelectorAll('[data-sex]')) btn.classList.toggle('on', btn.dataset.sex === fig.sex);
+  for (const btn of document.querySelectorAll('[data-style]')) btn.classList.toggle('on', btn.dataset.style === fig.style);
   $('#to-front').disabled = i < 0 || i === figs.length - 1;
   $('#to-back').disabled = i <= 0;
   $('#scale').value = fig.scale;
@@ -342,6 +370,7 @@ async function exportZip() {
       file, name: f.name, color: f.color, order: rankLabel(f) || '맨 앞',
       hips_position_cm: hips.toArray().map((n) => +(n * 100).toFixed(1)),
       scale: f.scale,
+      body: f.bodyKind,
       flips: f.flips,
       low_confidence: f.low,
     };
@@ -451,6 +480,16 @@ for (const btn of document.querySelectorAll('[data-flip]')) {
     if (!f) return;
     f.flips[btn.dataset.flip] = !f.flips[btn.dataset.flip];
     refresh();
+  });
+}
+for (const btn of document.querySelectorAll('[data-sex], [data-style]')) {
+  btn.addEventListener('click', () => {
+    const f = state.selected;
+    if (!f) return;
+    if (btn.dataset.sex) f.sex = btn.dataset.sex;
+    if (btn.dataset.style) f.style = btn.dataset.style;
+    ensureBody(f);
+    renderCard();
   });
 }
 $('#to-front').addEventListener('click', () => state.selected && move(state.selected, 1));

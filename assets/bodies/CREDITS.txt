@@ -1,0 +1,16 @@
+인체 모델 출처 (모두 CC0 1.0, 퍼블릭 도메인)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+real-male.glb, real-female.glb
+  Quaternius, "Universal Base Characters" (Standard, 무료판)
+  Superhero_Male_FullBody / Superhero_Female_FullBody
+  https://quaternius.com/packs/universalbasecharacters.html
+  https://quaternius.itch.io/universal-base-characters
+
+anime-male.glb, anime-female.glb
+  pixiv, VRoid Studio 샘플 모델 HairSample_Male / HairSample_Female (VRM 메타데이터 licenseName: CC0)
+  https://vroid.pixiv.help/hc/en-us/articles/4402614652569
+  사본: https://github.com/madjin/vrm-samples (vroid/beta)
+
+변경: tools/build-bodies.mjs로 텍스처·모프 타깃·옷·머리카락·눈 장식을 빼고,
+뼈 이름을 js/mannequin.js의 Mixamo식 이름으로 바꿔 GLB로 저장했다.

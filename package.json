@@ -1,0 +1,12 @@
+{
+  "name": "rkgk-to-3d",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:bodies": "node tools/build-bodies.mjs"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "4.1.1",
+    "@gltf-transform/functions": "4.1.1"
+  }
+}

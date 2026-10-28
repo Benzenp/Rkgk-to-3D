@@ -116,6 +116,8 @@ export class Mannequin {
     };
     this.meshes = [];
     this.#buildBody();
+    this.capsules = this.meshes; // 인체 모델을 불러오기 전까지 보이는 단순 인형
+    this.body = null;
     this.markers = {};
     const markerMat = new THREE.MeshBasicMaterial({ color: 0xff2a2a, depthTest: false, transparent: true, opacity: 0.85 });
     for (const [, bone] of KEY_JOINTS) {
@@ -167,7 +169,16 @@ export class Mannequin {
   }
 
   setSelected(on) {
-    for (const m of Object.values(this.mats)) m.emissive.setHex(on ? 0x333333 : 0x000000);
+    for (const m of [...Object.values(this.mats), this.body?.material]) m?.emissive.setHex(on ? 0x333333 : 0x000000);
+  }
+
+  // 보이는 모양을 인체 모델(body.js)로 바꾼다. 클릭 판정도 모델로 한다.
+  setBody(body) {
+    if (this.body) this.root.remove(this.body.root);
+    this.body = body;
+    this.root.add(body.root);
+    for (const m of this.capsules) m.visible = false;
+    this.meshes = body.meshes;
   }
 
   // lm: 인물 공간 좌표(m, 엉덩이 중심, three.js 축)의 MediaPipe 관절 33개

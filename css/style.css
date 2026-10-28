@@ -249,6 +249,11 @@ input[type=range]::-moz-range-thumb {
 .note { color: var(--muted); font-size: 11px; }
 .field input[type=range] { width: 100%; }
 .pills { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg { display: inline-flex; }
+.seg .pill { border-radius: 0; margin-left: -1px; }
+.seg .pill:first-child { border-radius: 999px 0 0 999px; margin-left: 0; }
+.seg .pill:last-child { border-radius: 0 999px 999px 0; }
+.seg + .seg { margin-left: 6px; }
 
 .pill {
   height: 30px;
