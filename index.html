@@ -32,7 +32,7 @@
     <section class="pane draw">
       <header class="head">
         <h1>rkgk <span>to 3D</span></h1>
-        <p>색마다 다른 인물로 인식해요. 가려지는 팔다리도 그려 주세요.</p>
+        <p>색마다 다른 인물로 인식해요. 몸통·팔다리를 면으로 칠하면 가장 잘 잡혀요. 가려지는 팔다리도 그려 주세요.</p>
       </header>
 
       <div id="stage" class="stage"></div>
@@ -73,6 +73,11 @@
           <button id="deselect" class="ghost" title="닫기 (Esc)"><svg><use href="#i-close"/></svg></button>
         </div>
         <p id="card-state" class="muted"></p>
+        <div class="field">
+          <span class="label">해석 <output id="cand-label"></output></span>
+          <button id="next-cand" class="pill">다른 해석 보기</button>
+          <span class="note">관절 표시가 그림과 다르면 눌러 보세요</span>
+        </div>
         <div class="field">
           <span class="label">체형</span>
           <div class="pills">

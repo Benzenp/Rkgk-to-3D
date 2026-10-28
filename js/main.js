@@ -33,6 +33,7 @@ const persons = COLORS.map((color, id) => ({
   mannequin: null, box: null, det: null, px: null, anchor: null, low: [],
   flips: {}, offset: new THREE.Vector3(), scale: 1, auto: new THREE.Vector3(), dirty: false,
   sex: 'female', style: 'anime', bodyKind: null,
+  candidates: [], pick: null, // 인식 후보들과, 사용자가 고른 해석(전처리 이름). null이면 점수가 가장 높은 것
 }));
 // 처음 그린 순서 (뒤 → 앞). 나중에 그린 인물일수록 앞
 const state = { order: [], selected: null, autoFrame: true };
@@ -105,17 +106,24 @@ function poseFigure(fig) {
   m.setLowConfidence(low.map(([, bone]) => bone));
 }
 
-// 원본 → 실루엣 → 선을 두껍게 한 실루엣 순서로 인식해 보고, 주요 관절 신뢰도 평균이 가장 높은 결과를 쓴다
-async function detectBest(canvas, model) {
-  const score = (det) => KEY_JOINTS.reduce((a, [i]) => a + (det.image[i].visibility ?? 1), 0) / KEY_JOINTS.length;
-  let best = null, bestScore = -1;
-  for (const make of [() => canvas, () => silhouette(canvas), () => silhouette(canvas, 0.02)]) {
-    const det = await detectPose(make(), model);
-    const s = det ? score(det) : -1;
-    if (s > bestScore) [best, bestScore] = [det, s];
-    if (bestScore >= 0.9) break;
-  }
-  return best;
+// 전처리마다 따로 인식해 본다. 점수가 높다고 늘 맞는 해석은 아니라서, 인물 카드에서 바꿔 볼 수 있게 모두 남겨 둔다.
+const VARIANTS = [
+  ['원본', (c) => c],
+  ['실루엣', (c) => silhouette(c)],
+  ['틈 메우기', (c) => silhouette(c, { close: 0.01 })],
+  ['두껍게', (c) => silhouette(c, { thicken: 0.02 })],
+];
+
+const score = (det) => KEY_JOINTS.reduce((a, [i]) => a + (det.image[i].visibility ?? 1), 0) / KEY_JOINTS.length;
+
+// 후보 하나를 이 인물의 인식 결과로 쓴다
+function useCandidate(p, i) {
+  const c = p.candidates[i] ?? p.candidates[0];
+  p.det = c?.det ?? null;
+  p.px = c?.px ?? null;
+  p.anchor = p.det
+    ? [(p.px[23][0] + p.px[24][0]) / 2, (p.px[23][1] + p.px[24][1]) / 2]
+    : [p.box.x + p.box.w / 2, p.box.y + p.box.h / 2];
 }
 
 async function analyze(p) {
@@ -129,11 +137,22 @@ async function analyze(p) {
   p.mannequin ??= new Mannequin(p.color);
   ensureBody(p);
   const crop = cropForDetection(layer, p.box);
-  p.det = await detectBest(crop.canvas, $('#model').value);
-  p.px = p.det ? p.det.image.map((l) => crop.toSource(l.x, l.y)) : null;
-  p.anchor = p.det
-    ? [(p.px[23][0] + p.px[24][0]) / 2, (p.px[23][1] + p.px[24][1]) / 2]
-    : [p.box.x + p.box.w / 2, p.box.y + p.box.h / 2];
+  const model = $('#model').value;
+  // 첫 후보가 나오는 대로 바로 보여 주고, 나머지 후보는 이어서 계산한다.
+  // 그 사이 새 획이 들어오면 남은 계산은 버리고 처음부터 다시 한다.
+  p.candidates = [];
+  for (const [label, make] of VARIANTS) {
+    if (p.dirty) return;
+    const det = await detectPose(make(crop.canvas), model);
+    if (!det) continue;
+    p.candidates.push({ label, det, score: score(det), px: det.image.map((l) => crop.toSource(l.x, l.y)) });
+    p.candidates.sort((a, b) => b.score - a.score);
+    const before = p.det;
+    // 다시 그려도 사용자가 고른 해석을 유지한다
+    useCandidate(p, p.candidates.findIndex((c) => c.label === p.pick));
+    if (p.det !== before) refresh();
+  }
+  useCandidate(p, p.candidates.findIndex((c) => c.label === p.pick));
 }
 
 // 고른 체형의 인체 모델을 불러와 붙인다. 불러오는 동안은 단순 인형이 보인다.
@@ -308,6 +327,9 @@ function renderCard() {
   const st = stateOf(fig);
   $('#card-state').textContent = st.text;
   $('#card-state').className = 'muted ' + st.cls;
+  const n = fig.candidates.length, ci = fig.candidates.findIndex((c) => c.det === fig.det);
+  $('#cand-label').textContent = n ? `${fig.candidates[ci].label} · ${ci + 1}/${n}` : '없음';
+  $('#next-cand').disabled = n < 2;
   for (const btn of document.querySelectorAll('[data-flip]')) {
     btn.classList.toggle('on', !!fig.flips[btn.dataset.flip]);
     btn.disabled = !fig.det;
@@ -494,6 +516,14 @@ for (const btn of document.querySelectorAll('[data-sex], [data-style]')) {
     renderCard();
   });
 }
+$('#next-cand').addEventListener('click', () => {
+  const f = state.selected;
+  if (!f || f.candidates.length < 2) return;
+  const i = (f.candidates.findIndex((c) => c.det === f.det) + 1) % f.candidates.length;
+  f.pick = f.candidates[i].label;
+  useCandidate(f, i);
+  refresh();
+});
 $('#to-front').addEventListener('click', () => state.selected && move(state.selected, 1));
 $('#to-back').addEventListener('click', () => state.selected && move(state.selected, -1));
 $('#scale').addEventListener('input', () => {

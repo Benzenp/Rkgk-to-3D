@@ -60,15 +60,20 @@ function dilate1d(mask, w, h, r, horizontal) {
 // 선 그림을 실루엣으로 바꾼다. 테두리에서 닿는 바탕만 남기고 선으로 둘러싸인 안쪽은 칠한다.
 // 포즈 인식 모델은 선만 있는 그림보다 면으로 칠한 인체를 훨씬 잘 잡는다.
 // thicken(0~1)은 그림 크기 대비 선을 두껍게 하는 정도로, 졸라맨처럼 선 하나로 된 팔다리에 살을 붙인다.
-export function silhouette(canvas, thicken = 0) {
+// close(0~1)는 선을 두껍게 했다가 다시 깎아서(닫기) 굵기는 그대로 두고 끊긴 틈만 메운다. 러프한 선 그림에 쓴다.
+export function silhouette(canvas, { thicken = 0, close = 0 } = {}) {
   const { width: w, height: h } = canvas;
   const ctx = canvas.getContext('2d');
   const img = ctx.getImageData(0, 0, w, h);
   const d = img.data;
   let mask = new Uint8Array(w * h);
   for (let i = 0; i < w * h; i++) mask[i] = d[i * 4] < 200 || d[i * 4 + 1] < 200 || d[i * 4 + 2] < 200 ? 1 : 0;
+  const grow = (m, r) => dilate1d(dilate1d(m, w, h, r, true), w, h, r, false);
+  const invert = (m) => m.map((v) => 1 - v);
   const r = Math.round(Math.max(w, h) * thicken);
-  if (r > 0) mask = dilate1d(dilate1d(mask, w, h, r, true), w, h, r, false);
+  if (r > 0) mask = grow(mask, r);
+  const rc = Math.round(Math.max(w, h) * close);
+  if (rc > 0) mask = invert(grow(invert(grow(mask, rc)), rc));
   const outside = new Uint8Array(w * h);
   const stack = [];
   const push = (i) => {
