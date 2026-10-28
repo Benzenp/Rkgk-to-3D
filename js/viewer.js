@@ -2,23 +2,30 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { inkOn } from './color.js';
-import { overlaySprite } from './mannequin.js';
 
 const R2D = THREE.MathUtils.radToDeg;
 const UP = new THREE.Vector3(0, 1, 0);
 
-// 광원 손잡이: 가운데가 하얗게 타고 바깥으로 번지는 빛 덩어리. 주·보조는 색으로만 구별한다.
-function makeLightOrb(name, color) {
-  return overlaySprite(`orb-${name}`, (g, n) => {
-    const grad = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
-    grad.addColorStop(0, '#ffffff');
-    grad.addColorStop(0.14, '#ffffff');
-    grad.addColorStop(0.26, color);
-    grad.addColorStop(0.5, color + '33');
-    grad.addColorStop(1, color + '00');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, n, n);
-  }, 0.2, { order: 21 });
+// 광원 손잡이: 장면 안의 빛나는 구. 인형 뒤로 가면 가려지고(가려진 부분은 옅게 비친다),
+// 짧은 화살표가 빛이 가는 쪽을, 바닥까지 내린 점선이 높이와 위치를 보여 준다. 주·보조는 색으로만 구별한다.
+function makeLightGizmo(key, color) {
+  const geo = new THREE.SphereGeometry(0.055, 24, 16);
+  const core = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6, roughness: 0.4, transparent: true }));
+  core.userData.light = key;
+  // 가려진 곳에서만 그려지는 옅은 겉모습: 인형 뒤에 있어도 찾아서 잡을 수 있게
+  const ghost = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.3, depthWrite: false, depthFunc: THREE.GreaterDepth }));
+  ghost.renderOrder = 18;
+  const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, -1, 0), new THREE.Vector3(), 0.2, new THREE.Color(color).multiplyScalar(0.7), 0.06, 0.04);
+  const handle = new THREE.Group();
+  handle.add(core, ghost, arrow);
+  const ink = new THREE.LineDashedMaterial({ color: 0x8a8a86, dashSize: 0.04, gapSize: 0.04, transparent: true, opacity: 0.6 });
+  const drop = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), ink);
+  // 바닥 표시는 원 대신 작은 십자 (원은 인물에만 쓴다)
+  const s = 0.05;
+  const mark = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-s, 0, 0), new THREE.Vector3(s, 0, 0), new THREE.Vector3(0, 0, -s), new THREE.Vector3(0, 0, s),
+  ]), new THREE.LineBasicMaterial({ color: 0x8a8a86, transparent: true, opacity: 0.8 }));
+  return { handle, core, arrow, drop, mark };
 }
 
 function makeLabel() {
@@ -34,13 +41,14 @@ function makeLabel() {
   return sprite;
 }
 
-// 인물 번호를 인물 색 원 안에 쓴다. 색 버튼의 번호와 같은 모양이다.
+// 인물 번호를 인물 색 둥근 사각형 안에 쓴다.
 function drawLabel(sprite, text, color) {
   const c = sprite.userData.canvas, ctx = c.getContext('2d');
   ctx.clearRect(0, 0, c.width, c.height);
   ctx.fillStyle = color;
+  // 위쪽 인물 칩과 같은 둥근 사각형 (원은 쓰지 않는다: 광원·관절과 헷갈리지 않게)
   ctx.beginPath();
-  ctx.arc(32, 32, 28, 0, Math.PI * 2);
+  ctx.roundRect(6, 6, 52, 52, 14);
   ctx.fill();
   ctx.fillStyle = inkOn(color);
   ctx.font = '600 32px "Pretendard Variable", Pretendard, system-ui, sans-serif';
@@ -80,17 +88,14 @@ export class Viewer {
     this.stage = { center: new THREE.Vector3(0, 0.9, 0), radius: 2.5, reach: 1 }; // radius: 광원 거리(그림자), reach: 손잡이 거리(화면 안)
     this.lights = {};
     for (const [key, color, intensity, dir] of [
-      ['key', '#ffb627', 2.2, [0.45, 0.75, 0.5]],
-      ['fill', '#5f9bff', 0.7, [-0.55, 0.35, 0.75]],
+      // 인물 팔레트(빨강·파랑·초록·주황·보라·청록)와 겹치지 않는 색: 금빛 노랑, 회색빛 하늘색
+      ['key', '#f0c04a', 2.2, [0.45, 0.75, 0.5]],
+      ['fill', '#9fb6c9', 0.7, [-0.55, 0.35, 0.75]],
     ]) {
       const light = new THREE.DirectionalLight(0xffffff, intensity);
-      const handle = makeLightOrb(key, color);
-      handle.userData.light = key;
-      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-        new THREE.LineDashedMaterial({ color, dashSize: 0.04, gapSize: 0.05, depthTest: false, transparent: true, opacity: 0.35 }));
-      line.renderOrder = 19;
-      this.scene.add(light, light.target, handle, line);
-      this.lights[key] = { light, handle, line, dir: new THREE.Vector3(...dir).normalize() };
+      const g = makeLightGizmo(key, color);
+      this.scene.add(light, light.target, g.handle, g.drop, g.mark);
+      this.lights[key] = { light, ...g, dir: new THREE.Vector3(...dir).normalize() };
     }
     const key = this.lights.key.light;
     key.castShadow = true;
@@ -184,7 +189,7 @@ export class Viewer {
   #gizmoAt(e) {
     const ray = this.#aim(e);
     if (this.mode === 'light' && this.figures.length) {
-      const light = ray.intersectObjects(Object.values(this.lights).map((l) => l.handle), false)[0];
+      const light = ray.intersectObjects(Object.values(this.lights).map((l) => l.core), false)[0];
       if (light) return { kind: 'light', key: light.object.userData.light };
     }
     if (this.mode === 'layout' && this.selected && ray.intersectObject(this.ringHit, false).length) return { kind: 'rotate', fig: this.selected };
@@ -318,7 +323,7 @@ export class Viewer {
       f.label.position.copy(head).add(new THREE.Vector3(0, 0.3 * f.mannequin.root.scale.y, 0));
     }
     // 비출 인물이 없으면 광원 손잡이도 숨긴다
-    for (const l of Object.values(this.lights)) l.handle.visible = l.line.visible = this.mode === 'light' && this.figures.length > 0;
+    for (const l of Object.values(this.lights)) l.handle.visible = l.drop.visible = l.mark.visible = this.mode === 'light' && this.figures.length > 0;
     const sel = this.selected?.mannequin.root;
     this.ring.visible = !!sel && this.mode === 'layout';
     if (sel) {
@@ -349,8 +354,11 @@ export class Viewer {
       l.handle.position.copy(center).addScaledVector(l.dir, reach);
       l.light.position.copy(center).addScaledVector(l.dir, radius);
       l.light.target.position.copy(center);
-      l.line.geometry.setFromPoints([l.handle.position, center]);
-      l.line.computeLineDistances();
+      l.arrow.setDirection(l.dir.clone().negate());
+      const foot = l.handle.position.clone().setY(0);
+      l.drop.geometry.setFromPoints([l.handle.position, foot]);
+      l.drop.computeLineDistances();
+      l.mark.position.copy(foot).setY(0.003);
     }
     const cam = this.lights.key.light.shadow.camera;
     const r = radius * 1.2;
@@ -363,8 +371,9 @@ export class Viewer {
   setLight(key, on) {
     const l = this.lights[key];
     l.light.visible = on;
-    l.handle.material.opacity = on ? 1 : 0.3;
-    l.line.material.opacity = on ? 0.5 : 0.15;
+    l.core.material.opacity = on ? 1 : 0.35;
+    l.core.material.emissiveIntensity = on ? 0.6 : 0;
+    l.arrow.visible = on;
     this.updateShadows();
   }
 
@@ -381,7 +390,8 @@ export class Viewer {
       const size = box.getSize(new THREE.Vector3());
       this.stage.radius = Math.max(2.5, size.length() * 0.9);
       // 인물들을 맞춘 화면 안에 손잡이가 들어오도록 키에 맞춘다
-      this.stage.reach = Math.max(0.5, size.y * 0.55);
+      // 손잡이는 인물 무리 바깥(머리 위 번호표와 겹치지 않게), 그러나 맞춘 화면 안에 들어오는 거리
+      this.stage.reach = Math.max(0.9, size.y * 0.62, size.x * 0.5 + 0.35);
     }
     this.#placeLights();
   }
@@ -519,7 +529,7 @@ export class Viewer {
 
   // 현재 시점 그대로 PNG로 만든다. 선택 표시, 이름표, 신뢰도 마커는 빼고 그린다.
   capture(scale = 2) {
-    const hidden = [this.ring, this.gizmoHelper, ...Object.values(this.lights).flatMap((l) => [l.handle, l.line]),
+    const hidden = [this.ring, this.gizmoHelper, ...Object.values(this.lights).flatMap((l) => [l.handle, l.drop, l.mark]),
       ...this.figures.flatMap((f) => [f.label, ...Object.values(f.mannequin.handles)])];
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => (o.visible = false));
