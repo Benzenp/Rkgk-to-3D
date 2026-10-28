@@ -3,6 +3,15 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { inkOn } from './color.js';
 
 const R2D = THREE.MathUtils.radToDeg;
+const UP = new THREE.Vector3(0, 1, 0);
+
+// 3D 안에 띄우는 조명 손잡이: 색 원 안에 글자 한 자
+function makeLightHandle(text, color) {
+  const sprite = makeLabel();
+  drawLabel(sprite, text, color);
+  sprite.scale.set(0.16, 0.16, 1);
+  return sprite;
+}
 
 function makeLabel() {
   const canvas = document.createElement('canvas');
@@ -34,25 +43,65 @@ function drawLabel(sprite, text, color) {
 }
 
 export class Viewer {
-  constructor(container, { onSelect, onFigureDrag, onJointDrag }) {
+  constructor(container, { onSelect, onFigureDrag, onFigureRotate, onJointDrag, onLightDrag }) {
     this.container = container;
     this.onSelect = onSelect;
     this.onFigureDrag = onFigureDrag;
+    this.onFigureRotate = onFigureRotate;
     this.onJointDrag = onJointDrag;
+    this.onLightDrag = onLightDrag;
     this.selected = null;
     this.drag = null;
     this.ray = new THREE.Raycaster();
     this.figures = [];
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // 그림자는 자세·배치·조명이 바뀔 때만 다시 그린다 (매 프레임 그리면 카메라만 돌려도 무겁다)
+    this.renderer.shadowMap.autoUpdate = false;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0xf6f6f4);
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x888899, 1.6));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-    sun.position.set(2, 4, 3);
-    this.scene.add(sun);
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x888899, 1.1));
+    // 주 광원(그림자)과 보조 광원. 손잡이를 끌면 인물들 가운데를 비추는 방향이 바뀐다.
+    this.stage = { center: new THREE.Vector3(0, 0.9, 0), radius: 2.5, reach: 1 }; // radius: 광원 거리(그림자), reach: 손잡이 거리(화면 안)
+    this.lights = {};
+    for (const [key, text, color, intensity, dir] of [
+      ['key', '주', '#f2b33d', 2.2, [0.45, 0.75, 0.5]],
+      ['fill', '보', '#8fb0e0', 0.7, [-0.55, 0.35, 0.75]],
+    ]) {
+      const light = new THREE.DirectionalLight(0xffffff, intensity);
+      const handle = makeLightHandle(text, color);
+      handle.userData.light = key;
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+        new THREE.LineDashedMaterial({ color, dashSize: 0.06, gapSize: 0.05, depthTest: false, transparent: true, opacity: 0.8 }));
+      line.renderOrder = 19;
+      this.scene.add(light, light.target, handle, line);
+      this.lights[key] = { light, handle, line, dir: new THREE.Vector3(...dir).normalize() };
+    }
+    const key = this.lights.key.light;
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.bias = -0.0005;
+    key.shadow.normalBias = 0.02;
+    // 바닥은 그림자만 받는다
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.16 }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    this.scene.add(floor);
+    // 고른 인형 발밑의 회전 고리. 얇은 고리는 잡기 어려워서 보이지 않는 두꺼운 고리로 판정한다.
+    this.ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.008, 6, 64),
+      new THREE.MeshBasicMaterial({ color: 0x161616, depthTest: false, transparent: true, opacity: 0.55 }));
+    this.ring.rotation.x = -Math.PI / 2;
+    this.ring.renderOrder = 11;
+    this.ring.visible = false;
+    this.ringHit = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.05, 6, 32), new THREE.MeshBasicMaterial({ visible: false }));
+    this.ring.add(this.ringHit);
+    this.ringBox = new THREE.Box3();
+    this.scene.add(this.ring);
+    this.#placeLights();
     this.grid = new THREE.GridHelper(20, 40, 0xd4d4d0, 0xe6e6e2);
     this.scene.add(this.grid);
 
@@ -95,6 +144,16 @@ export class Viewer {
     return hit ? { fig: this.selected, index: hit.object.userData.joint, point: hit.object.getWorldPosition(new THREE.Vector3()) } : null;
   }
 
+  // 조명 손잡이나 회전 고리를 눌렀는지
+  #gizmoAt(e) {
+    const ray = this.#aim(e);
+    const handles = Object.values(this.lights).map((l) => l.handle);
+    const light = ray.intersectObjects(handles, false)[0];
+    if (light) return { kind: 'light', key: light.object.userData.light };
+    if (this.selected && this.ring.visible && ray.intersectObject(this.ringHit, false).length) return { kind: 'rotate', fig: this.selected };
+    return null;
+  }
+
   #figureAt(e) {
     const hit = this.#aim(e).intersectObjects(this.figures.flatMap((f) => f.mannequin.meshes), false)[0];
     return hit ? { fig: this.figures.find((f) => f.mannequin.meshes.includes(hit.object)), point: hit.point } : null;
@@ -103,8 +162,21 @@ export class Viewer {
   #down(e) {
     if (e.pointerType === 'mouse' && e.button !== 0) return; // 오른쪽 드래그는 카메라 이동
     const start = [e.clientX, e.clientY];
-    const handle = this.#handleAt(e);
-    if (handle) {
+    const gizmo = this.#gizmoAt(e);
+    const handle = gizmo ? null : this.#handleAt(e);
+    if (gizmo?.kind === 'light') {
+      // 조명 손잡이는 인물들을 둘러싼 구의 겉면을 따라 끈다. 카메라 쪽에 있었으면 카메라 쪽 면, 뒤에 있었으면 뒷면.
+      const l = this.lights[gizmo.key];
+      const toCam = this.camera.getWorldDirection(new THREE.Vector3()).negate();
+      const side = Math.sign(l.dir.dot(toCam)) || 1;
+      this.drag = { kind: 'light', key: gizmo.key, start, toCam, side, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(toCam, this.stage.center) };
+    } else if (gizmo?.kind === 'rotate') {
+      // 고리는 바닥면 위에서, 인형 중심을 도는 각도로 돌린다
+      const root = gizmo.fig.mannequin.root;
+      const plane = new THREE.Plane(UP, -this.ring.position.y);
+      const p = this.ray.ray.intersectPlane(plane, new THREE.Vector3()) ?? root.position.clone();
+      this.drag = { kind: 'rotate', fig: gizmo.fig, start, plane, angle: Math.atan2(p.x - root.position.x, p.z - root.position.z), yaw: root.rotation.y };
+    } else if (handle) {
       // 관절은 카메라를 향한 평면 위에서 끈다
       const normal = this.camera.getWorldDirection(new THREE.Vector3());
       this.drag = { kind: 'joint', ...handle, start, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(normal, handle.point) };
@@ -113,7 +185,7 @@ export class Viewer {
       if (body) {
         // 인형은 잡은 높이의 수평면 위에서 끈다 (발 높이로 두면 카메라가 낮을 때 시선이 평면에 닿지 않는다)
         const root = body.fig.mannequin.root;
-        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -body.point.y);
+        const plane = new THREE.Plane(UP, -body.point.y);
         const grab = body.point.clone().sub(root.position);
         this.drag = { kind: 'figure', fig: body.fig, start, plane, grab };
       } else {
@@ -129,12 +201,13 @@ export class Viewer {
   #move(e) {
     const d = this.drag;
     if (!d) {
-      this.renderer.domElement.classList.toggle('over', !!this.#handleAt(e));
+      this.renderer.domElement.classList.toggle('over', !!(this.#gizmoAt(e) || this.#handleAt(e)));
       return;
     }
     if (d.kind === 'none') return;
     if (!d.moved && Math.hypot(e.clientX - d.start[0], e.clientY - d.start[1]) < 4) return;
     d.moved = true;
+    this.updateShadows();
     const hit = this.#aim(e).ray.intersectPlane(d.plane, new THREE.Vector3());
     if (!hit) return;
     if (d.kind === 'figure') {
@@ -142,6 +215,19 @@ export class Viewer {
       root.position.x = hit.x - d.grab.x;
       root.position.z = hit.z - d.grab.z;
       this.onFigureDrag?.(d.fig, 'move');
+    } else if (d.kind === 'rotate') {
+      const root = d.fig.mannequin.root;
+      const angle = Math.atan2(hit.x - root.position.x, hit.z - root.position.z);
+      root.rotation.y = d.yaw + angle - d.angle;
+      this.onFigureRotate?.(d.fig, R2D(root.rotation.y), 'move');
+    } else if (d.kind === 'light') {
+      const dir = hit.sub(this.stage.center);
+      const r = this.stage.reach, len = dir.length();
+      if (len < r) dir.addScaledVector(d.toCam, d.side * Math.sqrt(r * r - len * len));
+      if (dir.lengthSq() < 1e-6) return;
+      this.lights[d.key].dir.copy(dir.normalize());
+      this.#placeLights();
+      this.onLightDrag?.(d.key, 'move');
     } else {
       this.onJointDrag?.(d.fig, d.index, hit, 'move');
     }
@@ -155,13 +241,15 @@ export class Viewer {
     if (!d) return;
     if (d.moved) {
       if (d.kind === 'figure') this.onFigureDrag?.(d.fig, 'end');
+      else if (d.kind === 'rotate') this.onFigureRotate?.(d.fig, R2D(d.fig.mannequin.root.rotation.y), 'end');
+      else if (d.kind === 'light') this.onLightDrag?.(d.key, 'end');
       else if (d.kind === 'joint') this.onJointDrag?.(d.fig, d.index, this.#aim(e).ray.intersectPlane(d.plane, new THREE.Vector3()) ?? d.point, 'end');
       if (d.kind === 'figure' && d.fig !== this.selected) this.onSelect(d.fig);
       return;
     }
     // 끌지 않고 눌렀으면 선택: 인형이면 그 인물, 빈 곳이면 선택 해제
     if (d.kind === 'none' && Math.hypot(e.clientX - d.start[0], e.clientY - d.start[1]) > 4) return;
-    if (d.kind !== 'joint') this.onSelect(d.kind === 'figure' ? d.fig : null);
+    if (d.kind === 'figure' || d.kind === 'none') this.onSelect(d.kind === 'figure' ? d.fig : null);
   }
 
   #render() {
@@ -170,6 +258,13 @@ export class Viewer {
     for (const f of this.figures) {
       f.mannequin.bones.Head.getWorldPosition(head);
       f.label.position.copy(head).add(new THREE.Vector3(0, 0.3 * f.mannequin.root.scale.y, 0));
+    }
+    const sel = this.selected?.mannequin.root;
+    this.ring.visible = !!sel;
+    if (sel) {
+      // 그림 속 높이대로 떠 있는 인물도 있으니 바닥이 아니라 그 인형의 발 높이에 둔다
+      this.ring.position.set(sel.position.x, this.selected.mannequin.bounds(this.ringBox).min.y + 0.005, sel.position.z);
+      this.ring.scale.setScalar(sel.scale.x);
     }
     this.renderer.render(this.scene, this.camera);
   }
@@ -185,6 +280,55 @@ export class Viewer {
 
   updateLabel(fig, text, color) {
     drawLabel(fig.label, text, color);
+  }
+
+  // 조명 손잡이를 인물들 가운데에서 본 방향에 둔다
+  #placeLights() {
+    const { center, radius, reach } = this.stage;
+    for (const l of Object.values(this.lights)) {
+      l.handle.position.copy(center).addScaledVector(l.dir, reach);
+      l.light.position.copy(center).addScaledVector(l.dir, radius);
+      l.light.target.position.copy(center);
+      l.line.geometry.setFromPoints([l.handle.position, center]);
+      l.line.computeLineDistances();
+    }
+    const cam = this.lights.key.light.shadow.camera;
+    const r = radius * 1.2;
+    Object.assign(cam, { left: -r, right: r, top: r, bottom: -r, near: 0.1, far: radius * 3 });
+    cam.updateProjectionMatrix();
+    this.updateShadows();
+  }
+
+  updateShadows() {
+    this.renderer.shadowMap.needsUpdate = true;
+  }
+
+  // 인물을 다시 배치한 뒤 부른다: 조명이 모든 인물 가운데를 비추고, 그림자가 모두를 덮게 한다
+  setStage() {
+    const box = new THREE.Box3(), part = new THREE.Box3();
+    for (const f of this.figures) box.union(f.mannequin.bounds(part));
+    if (!box.isEmpty()) {
+      box.getCenter(this.stage.center);
+      const size = box.getSize(new THREE.Vector3());
+      this.stage.radius = Math.max(2.5, size.length() * 0.9);
+      // 인물들을 맞춘 화면 안에 손잡이가 들어오도록 키에 맞춘다
+      this.stage.reach = Math.max(0.5, size.y * 0.55);
+    }
+    this.#placeLights();
+  }
+
+  // 클튜 광원 설정에 옮길 방향 (방위: 정면(+Z)에서 오른쪽(+X)으로, 높이: 바닥에서 위로)
+  lightInfo() {
+    const out = {};
+    for (const [key, l] of Object.entries(this.lights)) {
+      out[key] = {
+        azimuth_deg: +R2D(Math.atan2(l.dir.x, l.dir.z)).toFixed(1),
+        elevation_deg: +R2D(Math.asin(THREE.MathUtils.clamp(l.dir.y, -1, 1))).toFixed(1),
+        direction: l.dir.toArray().map((n) => +n.toFixed(4)),
+        intensity: l.light.intensity,
+      };
+    }
+    return out;
   }
 
   select(fig) {
@@ -228,7 +372,8 @@ export class Viewer {
 
   // 현재 시점 그대로 PNG로 만든다. 선택 표시, 이름표, 신뢰도 마커는 빼고 그린다.
   capture(scale = 2) {
-    const hidden = this.figures.flatMap((f) => [f.label, ...Object.values(f.mannequin.markers), ...Object.values(f.mannequin.handles)]);
+    const hidden = [this.ring, ...Object.values(this.lights).flatMap((l) => [l.handle, l.line]),
+      ...this.figures.flatMap((f) => [f.label, ...Object.values(f.mannequin.markers), ...Object.values(f.mannequin.handles)])];
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => (o.visible = false));
     for (const f of this.figures) f.mannequin.setSelected(false);

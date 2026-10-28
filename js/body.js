@@ -77,6 +77,7 @@ export async function createBody(kind, color) {
     if (!o.isMesh) return;
     o.material = material;
     o.frustumCulled = false;
+    o.castShadow = true;
     meshes.push(o);
   });
   const bones = {};

@@ -30,7 +30,7 @@ const BONES_2D = [[0, 11], [0, 12], [11, 12], [11, 13], [13, 15], [12, 14], [14,
 const persons = COLORS.map((color, id) => ({
   id, color, name: `인물 ${id + 1}`,
   mannequin: null, box: null, det: null, px: null, anchor: null, low: [],
-  flips: {}, offset: new THREE.Vector3(), scale: 1, auto: new THREE.Vector3(), dirty: false,
+  flips: {}, offset: new THREE.Vector3(), scale: 1, yaw: 0, auto: new THREE.Vector3(), dirty: false,
   sex: 'female', style: 'anime', bodyKind: null,
   candidates: [], pick: null, // 인식 후보들과, 사용자가 고른 해석(전처리 이름). null이면 점수가 가장 높은 것
   // 사용자가 그림이나 3D에서 옮긴 관절: 관절 번호 → 인식 결과에 더할 이동량(m, three.js 축, 앞뒤 반전 전 기준)
@@ -70,6 +70,12 @@ const viewer = new Viewer($('#viewport'), {
   onFigureDrag: (f, phase) => {
     state.autoFrame = false; // 직접 배치하기 시작하면 카메라는 그대로 둔다
     f.offset.copy(f.mannequin.root.position).sub(f.auto);
+    if (phase === 'end') refresh();
+  },
+  // 발밑 고리를 끌어 인형을 돌린다
+  onFigureRotate: (f, deg, phase) => {
+    f.yaw = Math.round(((deg % 360) + 540) % 360 - 180);
+    if (f === state.selected) setYawLabel(f);
     if (phase === 'end') refresh();
   },
   // 3D에서 관절을 끌어 옮긴다
@@ -141,6 +147,7 @@ function poseFigure(fig) {
   const { lm, vis } = figureLandmarks(fig);
   m.applyLandmarks(lm);
   if (m.body) applyBody(m.body, m);
+  viewer.updateShadows();
   const thr = +$('#threshold').value;
   const low = KEY_JOINTS.filter(([i]) => vis[i] < thr);
   fig.low = low.map(([, , label]) => label);
@@ -276,6 +283,7 @@ function layout() {
   for (const f of figs) {
     f.mannequin.root.position.set(0, 0, 0);
     f.mannequin.root.scale.setScalar(1);
+    f.mannequin.root.rotation.set(0, 0, 0);
     poseFigure(f);
     f.mannequin.root.updateWorldMatrix(true, true);
     const joints = KEY_JOINTS.slice(1);
@@ -296,6 +304,7 @@ function layout() {
     f.auto.copy(root.position);
     root.position.add(f.offset);
     root.scale.setScalar(f.scale);
+    root.rotation.y = THREE.MathUtils.degToRad(f.yaw);
   });
 }
 
@@ -303,7 +312,10 @@ function refresh() {
   const figs = placed();
   if (figs.length !== viewer.figures.length || figs.some((f, i) => viewer.figures[i] !== f)) viewer.setFigures(figs);
   board.setOrder(state.order);
-  if (figs.length) layout();
+  if (figs.length) {
+    layout();
+    viewer.setStage();
+  }
   if (state.autoFrame && figs.length) viewer.frameAll();
   if (state.selected && !figures().includes(state.selected)) state.selected = null;
   viewer.select(state.selected?.det ? state.selected : null);
@@ -467,6 +479,12 @@ function renderCard() {
   $('#to-back').disabled = i <= 0;
   $('#scale').value = fig.scale;
   $('#scale-val').textContent = fig.scale.toFixed(2);
+  setYawLabel(fig);
+}
+
+function setYawLabel(fig) {
+  $('#yaw').value = fig.yaw;
+  $('#yaw-val').textContent = `${fig.yaw}°`;
 }
 
 function select(fig) {
@@ -524,12 +542,13 @@ async function exportZip() {
       file, name: f.name, color: f.color, order: rankLabel(f) || '맨 앞',
       hips_position_cm: hips.toArray().map((n) => +(n * 100).toFixed(1)),
       scale: f.scale,
+      rotation_y_deg: f.yaw,
       body: f.bodyKind,
       flips: f.flips,
       low_confidence: f.low,
     };
   });
-  const meta = { units: 'cm', up: '+Y', front: '+Z (카메라 쪽)', camera: viewer.cameraInfo(), figures: list };
+  const meta = { units: 'cm', up: '+Y', front: '+Z (카메라 쪽)', camera: viewer.cameraInfo(), lights: viewer.lightInfo(), figures: list };
   files['camera.json'] = strToU8(JSON.stringify(meta, null, 2));
   files['README.txt'] = strToU8(README_TXT);
   download(new Blob([zipSync(files, { level: 6 })], { type: 'application/zip' }), 'rkgk-pose.zip');
@@ -540,16 +559,17 @@ const README_TXT = `rkgk-to-3d 내보내기 묶음
 view.png    웹에서 저장한 현재 시점 이미지
 sketch.png  그린 스케치
 NN_*.bvh    인물별 포즈 (1프레임, Mixamo식 뼈 이름, cm 단위). 번호가 클수록 앞
-camera.json 카메라 수치와 인물별 위치·크기·보정 내용
+camera.json 카메라 수치, 주·보조 광원 방향, 인물별 위치·크기·회전·보정 내용
 
 클립 스튜디오에서 쓰기 (Ver. 3.1 이상, BVH 지원 버전)
 1. 3D 레이어에 데생 인형을 인물 수만큼 올린다.
 2. 각 데생 인형에 BVH 파일을 하나씩 적용한다.
 3. 배치를 유지하려면 "위치 고정"을 끈다. 모든 BVH의 위치는 같은 좌표계(cm) 기준이다.
 4. view.png를 반투명하게 깔고 카메라를 맞춘다. camera.json의 수치를 참고한다.
-5. 손끝 같은 세부는 클립 스튜디오에서 조정한다.
+5. 광원은 camera.json의 lights를 참고한다 (방위: 정면에서 오른쪽으로 잰 각도, 높이: 바닥에서 위로 잰 각도).
+6. 손끝 같은 세부는 클립 스튜디오에서 조정한다.
 
-웹에서 바꾼 크기는 BVH에 담기지 않는다. 데생 인형 크기는 camera.json의 scale을 보고 맞춘다.
+웹에서 돌린 방향은 BVH에 담기지만, 바꾼 크기는 BVH에 담기지 않는다. 데생 인형 크기는 camera.json의 scale을 보고 맞춘다.
 `;
 
 // --- 왼쪽 UI 연결 ---
@@ -669,13 +689,23 @@ $('#scale').addEventListener('input', () => {
   if (!f) return;
   f.scale = +$('#scale').value;
   f.mannequin.root.scale.setScalar(f.scale);
+  viewer.updateShadows();
   $('#scale-val').textContent = f.scale.toFixed(2);
+});
+$('#yaw').addEventListener('input', () => {
+  const f = state.selected;
+  if (!f) return;
+  f.yaw = +$('#yaw').value;
+  f.mannequin.root.rotation.y = THREE.MathUtils.degToRad(f.yaw);
+  viewer.updateShadows();
+  setYawLabel(f);
 });
 $('#reset-pos').addEventListener('click', () => {
   const f = state.selected;
   if (!f) return;
   f.offset.set(0, 0, 0);
   f.scale = 1;
+  f.yaw = 0;
   refresh();
 });
 $('#reset-joints').addEventListener('click', () => {
