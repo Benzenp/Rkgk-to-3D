@@ -25,6 +25,8 @@
       <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M5 19.5h14"/></symbol>
       <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18.5" cy="12" r="1.2"/></symbol>
       <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+      <symbol id="i-prev" viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6"/></symbol>
+      <symbol id="i-next" viewBox="0 0 24 24"><path d="M9.5 6l6 6-6 6"/></symbol>
     </defs>
   </svg>
 
@@ -74,9 +76,12 @@
         </div>
         <p id="card-state" class="muted"></p>
         <div class="field">
-          <span class="label">해석 <output id="cand-label"></output></span>
-          <button id="next-cand" class="pill">다른 해석 보기</button>
-          <span class="note">관절 표시가 그림과 다르면 눌러 보세요</span>
+          <span class="label">해석</span>
+          <div class="stepper">
+            <button id="prev-cand" class="ghost" aria-label="이전 해석"><svg><use href="#i-prev"/></svg></button>
+            <output id="cand-label"></output>
+            <button id="next-cand" class="ghost" aria-label="다음 해석"><svg><use href="#i-next"/></svg></button>
+          </div>
         </div>
         <div class="field">
           <span class="label">체형</span>
@@ -98,12 +103,11 @@
         <div class="field">
           <span class="label">팔다리 앞뒤</span>
           <div class="pills">
-            <button data-flip="la" class="pill">왼팔</button>
-            <button data-flip="ra" class="pill">오른팔</button>
-            <button data-flip="ll" class="pill">왼다리</button>
-            <button data-flip="rl" class="pill">오른다리</button>
+            <button data-flip="la" class="pill" title="인형의 밝은 쪽 팔"><span class="side light"></span>왼팔</button>
+            <button data-flip="ra" class="pill" title="인형의 어두운 쪽 팔"><span class="side dark"></span>오른팔</button>
+            <button data-flip="ll" class="pill" title="인형의 밝은 쪽 다리"><span class="side light"></span>왼다리</button>
+            <button data-flip="rl" class="pill" title="인형의 어두운 쪽 다리"><span class="side dark"></span>오른다리</button>
           </div>
-          <span class="note">밝은 쪽이 인형의 왼쪽</span>
         </div>
         <div class="field">
           <span class="label">순서</span>
@@ -138,6 +142,7 @@
                 <input id="threshold" type="range" min="0" max="1" step="0.05" value="0.5">
               </label>
               <label class="check"><input id="grid" type="checkbox" checked> 바닥 격자</label>
+              <div><span class="label">인식 장치</span> <output id="device">준비 중</output></div>
               <div>
                 <span class="label">카메라 수치</span>
                 <pre id="camera-info"></pre>

@@ -14,23 +14,49 @@ async function wasmFileset() {
 
 const cache = {};
 
+// 실제로 인식을 돌리는 장치. CPU는 러프한 스케치를 GPU보다 훨씬 못 잡는다.
+export let device = null;
+
+// 모델 파일은 한 번만 받아 메모리에 둔다. 다운로드가 한 번 끊겼다고 GPU를 포기하지 않도록, 받는 일과 장치 고르는 일을 나눈다.
+async function fetchModel(url, tries = 3) {
+  for (let i = 1; ; i++) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return new Uint8Array(await res.arrayBuffer());
+    } catch (err) {
+      if (i >= tries) throw new Error(`인식 모델을 받지 못했어요 (${err.message})`);
+      await new Promise((r) => setTimeout(r, 500 * i));
+    }
+  }
+}
+
 function getLandmarker(model) {
-  cache[model] ??= (async () => {
-    const fileset = await wasmFileset();
+  if (cache[model]) return cache[model];
+  cache[model] = (async () => {
+    const [fileset, bytes] = await Promise.all([wasmFileset(), fetchModel(MODELS[model])]);
     // 스케치는 사진보다 인식 점수가 낮게 나오므로 검출 기준을 느슨하게 둔다
     const options = (delegate) => ({
-      baseOptions: { modelAssetPath: MODELS[model], delegate },
+      baseOptions: { modelAssetBuffer: bytes.slice(), delegate },
       runningMode: 'IMAGE',
       numPoses: 1,
       minPoseDetectionConfidence: 0.1,
       minPosePresenceConfidence: 0.1,
     });
+    // 모델은 이미 받았으니, 여기서 실패하면 정말로 이 기기에서 GPU를 쓸 수 없는 것이다
     try {
-      return await PoseLandmarker.createFromOptions(fileset, options('GPU'));
-    } catch {
-      return PoseLandmarker.createFromOptions(fileset, options('CPU'));
+      const landmarker = await PoseLandmarker.createFromOptions(fileset, options('GPU'));
+      device = 'GPU';
+      return landmarker;
+    } catch (err) {
+      console.warn('GPU 인식을 쓸 수 없어 CPU로 돌립니다', err);
+      const landmarker = await PoseLandmarker.createFromOptions(fileset, options('CPU'));
+      device = 'CPU';
+      return landmarker;
     }
   })();
+  // 실패한 시도는 기억하지 않아서, 다음 획에서 다시 받아 본다
+  cache[model].catch(() => delete cache[model]);
   return cache[model];
 }
 

@@ -70,7 +70,7 @@ svg {
   position: relative;
   background: #fff;
   border-radius: 4px;
-  box-shadow: var(--shadow);
+  outline: 1px solid var(--line);
 }
 
 .paper .layer {
@@ -117,16 +117,22 @@ button:disabled { opacity: 0.35; cursor: default; }
   height: 28px !important;
   border-radius: 50% !important;
 }
-.swatch::before {
-  content: "";
-  width: 14px;
-  height: 14px;
+/* 색 버튼 안의 번호가 상단 칩의 "인물 N"과 짝이다 */
+.swatch .num {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: var(--c);
+  color: var(--on);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   transition: transform 0.15s;
 }
-.swatch.on { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--c); }
-.swatch.on::before { transform: scale(1.15); }
+.swatch.on { background: transparent !important; outline: 1.5px solid var(--c); outline-offset: -1px; }
+.swatch.on .num { transform: scale(1.1); }
 
 .size { gap: 10px; }
 .size output { width: 20px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -195,14 +201,13 @@ input[type=range]::-moz-range-thumb {
   gap: 6px;
   height: 30px;
   padding: 0 12px 0 10px;
-  border: 0;
+  border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.85);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  background: #fff;
   font-size: 13px;
   cursor: pointer;
 }
-.chip.on { background: var(--ink); color: #fff; }
+.chip.on { background: var(--ink); border-color: var(--ink); color: #fff; }
 .chip .rank { color: var(--muted); }
 .chip.on .rank { color: rgba(255, 255, 255, 0.6); }
 .chip .mark { width: 5px; height: 5px; border-radius: 50%; }
@@ -258,6 +263,25 @@ input[type=range]::-moz-range-thumb {
 .seg .pill:first-child { border-radius: 999px 0 0 999px; margin-left: 0; }
 .seg .pill:last-child { border-radius: 0 999px 999px 0; }
 .seg + .seg { margin-left: 6px; }
+
+/* 해석 넘기기: ‹ 실루엣 · 1/4 › */
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.stepper output { min-width: 112px; text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; }
+.stepper .ghost { width: 32px; height: 30px; border-radius: 999px; }
+.stepper .ghost:disabled { opacity: 0.35; }
+
+/* 팔다리 버튼의 점: 인형의 밝은 쪽(왼쪽) / 어두운 쪽(오른쪽) */
+.pill .side { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; vertical-align: 0; }
+.side.light { background: #ecece9; outline: 1px solid #c9c9c5; outline-offset: -1px; }
+.side.dark { background: #8f8f8b; }
+.pill.on .side.light { outline-color: #fff; }
 
 .pill {
   height: 30px;

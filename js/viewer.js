@@ -1,37 +1,36 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
+import { inkOn } from './color.js';
 
 const R2D = THREE.MathUtils.radToDeg;
 
 function makeLabel() {
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
+  canvas.width = 64;
   canvas.height = 64;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false }));
-  sprite.scale.set(0.6, 0.15, 1);
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace; // 인물 색이 칩·색 버튼과 같게 보이도록
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, depthTest: false }));
+  sprite.scale.set(0.14, 0.14, 1);
   sprite.renderOrder = 20;
   sprite.userData.canvas = canvas;
   return sprite;
 }
 
+// 인물 번호를 인물 색 원 안에 쓴다. 색 버튼의 번호와 같은 모양이다.
 function drawLabel(sprite, text, color) {
   const c = sprite.userData.canvas, ctx = c.getContext('2d');
   ctx.clearRect(0, 0, c.width, c.height);
-  ctx.font = '600 26px "Pretendard Variable", Pretendard, system-ui, sans-serif';
-  const w = Math.min(c.width - 4, ctx.measureText(text).width + 64);
-  const x = (c.width - w) / 2;
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  ctx.beginPath();
-  ctx.roundRect(x, 10, w, c.height - 20, 22);
-  ctx.fill();
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.arc(x + 24, c.height / 2, 7, 0, Math.PI * 2);
+  ctx.arc(32, 32, 28, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#222';
+  ctx.fillStyle = inkOn(color);
+  ctx.font = '600 32px "Pretendard Variable", Pretendard, system-ui, sans-serif';
+  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, x + 40, c.height / 2 + 1, w - 52);
+  ctx.fillText(text, 32, 34);
   sprite.material.map.needsUpdate = true;
 }
 
@@ -105,7 +104,7 @@ export class Viewer {
     const head = new THREE.Vector3();
     for (const f of this.figures) {
       f.mannequin.bones.Head.getWorldPosition(head);
-      f.label.position.copy(head).add(new THREE.Vector3(0, 0.38 * f.mannequin.root.scale.y, 0));
+      f.label.position.copy(head).add(new THREE.Vector3(0, 0.3 * f.mannequin.root.scale.y, 0));
     }
     this.renderer.render(this.scene, this.camera);
   }

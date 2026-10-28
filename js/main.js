@@ -3,12 +3,13 @@ import { registerSW } from 'virtual:pwa-register';
 import * as THREE from 'three';
 import { zipSync, strToU8 } from 'fflate';
 import { inkBounds, cropForDetection, silhouette } from './input.js';
-import { detectPose, preload } from './pose.js';
+import { detectPose, preload, device } from './pose.js';
 import { Mannequin, KEY_JOINTS } from './mannequin.js';
 import { toBVH } from './bvh.js';
 import { Viewer } from './viewer.js';
 import { DrawingBoard } from './board.js';
 import { createBody, applyBody } from './body.js';
+import { inkOn } from './color.js';
 
 const $ = (s) => document.querySelector(s);
 // 색 하나가 인물 한 명이다
@@ -204,7 +205,8 @@ function summary() {
   const figs = placed();
   const waiting = figures().length - figs.length;
   const low = figs.filter((f) => f.low.length).length;
-  return [figs.length && `인물 ${figs.length}명`, low && `불확실 ${low}`, waiting && `인식 대기 ${waiting}`].filter(Boolean).join(' · ');
+  const weak = device === 'CPU' && '이 기기에서는 인식이 약할 수 있어요';
+  return [figs.length && `인물 ${figs.length}명`, low && `불확실 ${low}`, waiting && `인식 대기 ${waiting}`, weak].filter(Boolean).join(' · ');
 }
 
 // --- 배치 ---
@@ -313,7 +315,8 @@ function renderChips() {
     b.title = st.text;
     b.addEventListener('click', () => select(fig === state.selected ? null : fig));
     host.appendChild(b);
-    if (fig.label) viewer.updateLabel(fig, [fig.name, rankLabel(fig)].filter(Boolean).join(' · '), fig.color);
+    // 3D 이름표는 번호만: 이름과 순서는 칩에 있다
+    if (fig.label) viewer.updateLabel(fig, String(fig.id + 1), fig.color);
   }
 }
 
@@ -330,7 +333,7 @@ function renderCard() {
   $('#card-state').className = 'muted ' + st.cls;
   const n = fig.candidates.length, ci = fig.candidates.findIndex((c) => c.det === fig.det);
   $('#cand-label').textContent = n ? `${fig.candidates[ci].label} · ${ci + 1}/${n}` : '없음';
-  $('#next-cand').disabled = n < 2;
+  $('#prev-cand').disabled = $('#next-cand').disabled = n < 2;
   for (const btn of document.querySelectorAll('[data-flip]')) {
     btn.classList.toggle('on', !!fig.flips[btn.dataset.flip]);
     btn.disabled = !fig.det;
@@ -433,7 +436,10 @@ COLORS.forEach((c, i) => {
   const b = document.createElement('button');
   b.className = 'swatch' + (i === 0 ? ' on' : '');
   b.style.setProperty('--c', c);
+  b.style.setProperty('--on', inkOn(c));
+  b.innerHTML = `<span class="num">${i + 1}</span>`;
   b.title = `인물 ${i + 1} (${i + 1})`;
+  b.setAttribute('aria-label', `인물 ${i + 1}`);
   b.addEventListener('click', () => setActive(i));
   swatches.appendChild(b);
 });
@@ -520,14 +526,17 @@ for (const btn of document.querySelectorAll('[data-sex], [data-style]')) {
     renderCard();
   });
 }
-$('#next-cand').addEventListener('click', () => {
+function stepCandidate(dir) {
   const f = state.selected;
   if (!f || f.candidates.length < 2) return;
-  const i = (f.candidates.findIndex((c) => c.det === f.det) + 1) % f.candidates.length;
+  const n = f.candidates.length;
+  const i = (f.candidates.findIndex((c) => c.det === f.det) + dir + n) % n;
   f.pick = f.candidates[i].label;
   useCandidate(f, i);
   refresh();
-});
+}
+$('#prev-cand').addEventListener('click', () => stepCandidate(-1));
+$('#next-cand').addEventListener('click', () => stepCandidate(1));
 $('#to-front').addEventListener('click', () => state.selected && move(state.selected, 1));
 $('#to-back').addEventListener('click', () => state.selected && move(state.selected, -1));
 $('#scale').addEventListener('input', () => {
@@ -571,6 +580,9 @@ registerSW({ immediate: true });
 
 setStatus('모델 준비 중', true);
 preload($('#model').value)
-  .then(() => !running && setStatus(summary()))
+  .then(() => {
+    $('#device').textContent = device === 'GPU' ? 'GPU' : 'CPU (인식이 약할 수 있어요)';
+    if (!running) setStatus(summary());
+  })
   .catch(() => setStatus('인식 모델을 불러오지 못했어요'));
 updateCameraInfo();
