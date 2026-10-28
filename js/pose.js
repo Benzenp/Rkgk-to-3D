@@ -29,6 +29,11 @@ function getLandmarker(model) {
   return cache[model];
 }
 
+// 첫 획을 긋기 전에 모델을 미리 받아 둔다
+export function preload(model) {
+  return getLandmarker(model);
+}
+
 // canvas에서 한 사람의 관절을 찾는다. 못 찾으면 null
 export async function detectPose(canvas, model) {
   const landmarker = await getLandmarker(model);

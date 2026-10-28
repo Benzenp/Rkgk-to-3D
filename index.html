@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>rkgk to 3D</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
   <link rel="stylesheet" href="css/style.css">
   <script type="importmap">
   {
@@ -17,84 +18,125 @@
   </script>
 </head>
 <body>
-  <aside id="side">
-    <header>
-      <h1>rkgk to 3D</h1>
-      <p class="sub">졸라맨 스케치 → 3D 구도 레퍼런스</p>
-    </header>
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20l1.2-4.6L15.8 4.8a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8L8.6 18.8z"/><path d="M13.5 7l3.5 3.5"/></symbol>
+      <symbol id="i-eraser" viewBox="0 0 24 24"><path d="M8.5 20H20"/><path d="M4.7 14.7l9.6-9.6a2 2 0 0 1 2.8 0l2.8 2.8a2 2 0 0 1 0 2.8L12 18.6a3 3 0 0 1-2.1.9H8.4a2 2 0 0 1-1.4-.6l-2.3-2.3a2 2 0 0 1 0-2.8z"/><path d="M9 10.5l5.5 5.5"/></symbol>
+      <symbol id="i-lasso" viewBox="0 0 24 24"><path d="M7 16.5C4.6 15.3 3 13.3 3 11c0-4 4-7 9-7s9 3 9 7-4 7-9 7c-.9 0-1.8-.1-2.6-.3"/><circle cx="8" cy="17.5" r="1.8"/><path d="M8 19.3c0 1.2-.6 2-1.6 2.7"/></symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+      <symbol id="i-redo" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l.8 12.2a1 1 0 0 0 1 .8h7.4a1 1 0 0 0 1-.8L17.5 7"/></symbol>
+      <symbol id="i-focus" viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/><circle cx="12" cy="12" r="2.5"/></symbol>
+      <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M20.5 16l-5-5-9 8.5"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M5 19.5h14"/></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18.5" cy="12" r="1.2"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    </defs>
+  </svg>
 
-    <section>
-      <h2>1. 스케치 올리기</h2>
-      <label id="drop" class="drop">
-        <input id="file" type="file" accept="image/*,.psd" multiple hidden>
-        <strong>파일을 끌어다 놓거나 클릭</strong>
-        <span>인물별 레이어 PNG 여러 장, 또는 레이어가 있는 PSD</span>
-      </label>
-      <label class="check"><input id="color-split" type="checkbox"> 한 장에 인물마다 색을 달리 그렸어요 (색별로 분리)</label>
-      <p class="hint">다른 인물에게 가려지는 팔다리도 자기 레이어에 그려 주세요. 생략하면 그 관절은 추측으로 채워집니다.</p>
-      <div class="row">
-        <label>인식 모델
-          <select id="model">
-            <option value="full">기본 (full)</option>
-            <option value="heavy">정밀 (heavy, 느림)</option>
-          </select>
-        </label>
-        <label>신뢰도 기준 <output id="threshold-val">0.50</output>
-          <input id="threshold" type="range" min="0" max="1" step="0.05" value="0.5">
-        </label>
-      </div>
+  <div class="app">
+    <section class="pane draw">
+      <header class="head">
+        <h1>rkgk <span>to 3D</span></h1>
+        <p>색마다 다른 인물로 인식해요. 가려지는 팔다리도 그려 주세요.</p>
+      </header>
+
+      <div id="stage" class="stage"></div>
+
+      <nav class="tools" aria-label="그리기 도구">
+        <div class="group">
+          <button class="tool on" data-tool="pen" title="펜 (B)"><svg><use href="#i-pen"/></svg></button>
+          <button class="tool" data-tool="eraser" title="지우개 (E)"><svg><use href="#i-eraser"/></svg></button>
+          <button class="tool" data-tool="lasso" title="라쏘 — 감싸서 옮기기, Delete로 지우기 (L)"><svg><use href="#i-lasso"/></svg></button>
+        </div>
+        <div class="group" id="swatches"></div>
+        <div class="group size">
+          <input id="size" type="range" min="1" max="60" value="8" aria-label="굵기">
+          <output id="size-val">8</output>
+        </div>
+        <div class="group">
+          <button id="undo" title="되돌리기 (Ctrl+Z)"><svg><use href="#i-undo"/></svg></button>
+          <button id="redo" title="다시 하기 (Ctrl+Shift+Z)"><svg><use href="#i-redo"/></svg></button>
+          <button id="guides" class="on" title="인식된 관절 보기"><svg><use href="#i-eye"/></svg></button>
+          <button id="clear" title="모두 지우기"><svg><use href="#i-trash"/></svg></button>
+        </div>
+      </nav>
     </section>
 
-    <section>
-      <h2>2. 인물 <small>나중에 만든(위쪽) 레이어일수록 앞</small></h2>
-      <p id="empty" class="hint">아직 인물이 없습니다.</p>
-      <ul id="figures"></ul>
-    </section>
+    <section class="pane view">
+      <div id="viewport"></div>
+      <p id="empty" class="empty">왼쪽에 그리면<br>바로 3D 포즈로 바뀝니다</p>
 
-    <section id="fig-panel" hidden>
-      <h2 id="fig-title">인물</h2>
-      <div class="buttons">
-        <button data-flip="body" title="정면 ↔ 뒤돌아섬">몸 방향 반전</button>
+      <div class="top">
+        <div id="chips" class="chips"></div>
+        <span id="status" class="status"></span>
       </div>
-      <p class="hint">팔다리 앞뒤 뒤집기 (밝은 쪽이 인형의 왼쪽)</p>
-      <div class="buttons grid2">
-        <button data-flip="la">왼팔</button>
-        <button data-flip="ra">오른팔</button>
-        <button data-flip="ll">왼다리</button>
-        <button data-flip="rl">오른다리</button>
-      </div>
-      <label>크기 <output id="scale-val">1.00</output>
-        <input id="scale" type="range" min="0.5" max="1.5" step="0.01" value="1">
-      </label>
-      <p class="hint">위치는 화면의 화살표를 끌어서 옮깁니다.</p>
-      <div class="buttons">
-        <button id="reset-pos">위치·크기 되돌리기</button>
-        <button id="deselect">선택 해제</button>
+
+      <aside id="card" class="card" hidden>
+        <div class="card-head">
+          <span class="dot" id="card-dot"></span>
+          <strong id="card-title"></strong>
+          <button id="deselect" class="ghost" title="닫기 (Esc)"><svg><use href="#i-close"/></svg></button>
+        </div>
+        <p id="card-state" class="muted"></p>
+        <div class="field">
+          <span class="label">방향</span>
+          <button data-flip="body" class="pill">몸 앞뒤 반전</button>
+        </div>
+        <div class="field">
+          <span class="label">팔다리 앞뒤</span>
+          <div class="pills">
+            <button data-flip="la" class="pill">왼팔</button>
+            <button data-flip="ra" class="pill">오른팔</button>
+            <button data-flip="ll" class="pill">왼다리</button>
+            <button data-flip="rl" class="pill">오른다리</button>
+          </div>
+          <span class="note">밝은 쪽이 인형의 왼쪽</span>
+        </div>
+        <div class="field">
+          <span class="label">순서</span>
+          <div class="pills">
+            <button id="to-front" class="pill">앞으로</button>
+            <button id="to-back" class="pill">뒤로</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="label">크기 <output id="scale-val">1.00</output></span>
+          <input id="scale" type="range" min="0.5" max="1.5" step="0.01" value="1">
+        </div>
+        <button id="reset-pos" class="ghost text">위치·크기 되돌리기</button>
+      </aside>
+
+      <div class="viewbar">
+        <label class="fov">화각 <input id="fov" type="range" min="10" max="90" step="1" value="35"> <output id="fov-val">35°</output></label>
+        <div class="group">
+          <button id="frame" title="정면으로 맞추기"><svg><use href="#i-focus"/></svg></button>
+          <button id="export-png" title="PNG 저장" disabled><svg><use href="#i-image"/></svg></button>
+          <button id="export-zip" title="묶음 내보내기 (BVH + PNG + 카메라)" disabled><svg><use href="#i-download"/></svg></button>
+          <details class="more">
+            <summary title="설정"><svg><use href="#i-more"/></svg></summary>
+            <div class="menu">
+              <label>인식 모델
+                <select id="model">
+                  <option value="full">기본</option>
+                  <option value="heavy">정밀 (느림)</option>
+                </select>
+              </label>
+              <label>신뢰도 기준 <output id="threshold-val">0.50</output>
+                <input id="threshold" type="range" min="0" max="1" step="0.05" value="0.5">
+              </label>
+              <label class="check"><input id="grid" type="checkbox" checked> 바닥 격자</label>
+              <div>
+                <span class="label">카메라 수치</span>
+                <pre id="camera-info"></pre>
+              </div>
+            </div>
+          </details>
+        </div>
       </div>
     </section>
-
-    <section>
-      <h2>3. 카메라와 저장</h2>
-      <label>화각 <output id="fov-val">35</output>°
-        <input id="fov" type="range" min="10" max="90" step="1" value="35">
-      </label>
-      <label class="check"><input id="grid" type="checkbox" checked> 바닥 격자 표시</label>
-      <div class="buttons">
-        <button id="frame">정면으로 맞추기</button>
-        <button id="export-png" class="primary" disabled>PNG 저장</button>
-        <button id="export-zip" class="primary" disabled>묶음 내보내기 (BVH+PNG+카메라)</button>
-      </div>
-      <details>
-        <summary>카메라 수치</summary>
-        <pre id="camera-info"></pre>
-      </details>
-    </section>
-  </aside>
-
-  <main>
-    <div id="viewport"></div>
-    <div id="status">스케치를 올리면 인물마다 마네킹 포즈가 잡힙니다. 왼쪽 드래그: 회전 · 오른쪽 드래그: 이동 · 휠: 줌</div>
-  </main>
+  </div>
 
   <script type="module" src="js/main.js"></script>
 </body>

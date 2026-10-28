@@ -18,15 +18,20 @@ function makeLabel() {
 function drawLabel(sprite, text, color) {
   const c = sprite.userData.canvas, ctx = c.getContext('2d');
   ctx.clearRect(0, 0, c.width, c.height);
-  ctx.fillStyle = 'rgba(20,20,24,0.8)';
+  ctx.font = '600 26px "Pretendard Variable", Pretendard, system-ui, sans-serif';
+  const w = Math.min(c.width - 4, ctx.measureText(text).width + 64);
+  const x = (c.width - w) / 2;
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
   ctx.beginPath();
-  ctx.roundRect(2, 8, c.width - 4, c.height - 16, 20);
+  ctx.roundRect(x, 10, w, c.height - 20, 22);
   ctx.fill();
   ctx.fillStyle = color;
-  ctx.font = 'bold 26px system-ui, sans-serif';
-  ctx.textAlign = 'center';
+  ctx.beginPath();
+  ctx.arc(x + 24, c.height / 2, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#222';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, c.width / 2, c.height / 2, c.width - 24);
+  ctx.fillText(text, x + 40, c.height / 2 + 1, w - 52);
   sprite.material.map.needsUpdate = true;
 }
 
@@ -40,12 +45,12 @@ export class Viewer {
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xf4f4f2);
+    this.scene.background = new THREE.Color(0xf6f6f4);
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x888899, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(2, 4, 3);
     this.scene.add(sun);
-    this.grid = new THREE.GridHelper(20, 40, 0xb0b0b8, 0xd6d6dc);
+    this.grid = new THREE.GridHelper(20, 40, 0xd4d4d0, 0xe6e6e2);
     this.scene.add(this.grid);
 
     this.camera = new THREE.PerspectiveCamera(35, 1, 0.05, 200);
@@ -58,7 +63,7 @@ export class Viewer {
     this.gizmo.size = 0.8;
     this.gizmo.addEventListener('dragging-changed', (e) => {
       this.orbit.enabled = !e.value;
-      if (!e.value) onMove?.();
+      if (!e.value) onMove?.(this.figures.find((f) => f.mannequin.root === this.gizmo.object));
     });
     this.gizmoHelper = this.gizmo.getHelper();
     this.scene.add(this.gizmoHelper);

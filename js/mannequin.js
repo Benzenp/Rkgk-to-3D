@@ -170,13 +170,6 @@ export class Mannequin {
     for (const m of Object.values(this.mats)) m.emissive.setHex(on ? 0x333333 : 0x000000);
   }
 
-  // 인식 실패 시 쓰는 기본 자세 (팔을 내린 A자세)
-  setDefaultPose() {
-    for (const b of Object.values(this.bones)) b.quaternion.identity();
-    this.bones.LeftArm.rotation.z = -1.2;
-    this.bones.RightArm.rotation.z = 1.2;
-  }
-
   // lm: 인물 공간 좌표(m, 엉덩이 중심, three.js 축)의 MediaPipe 관절 33개
   applyLandmarks(lm) {
     const sub = (a, b) => lm[a].clone().sub(lm[b]);
