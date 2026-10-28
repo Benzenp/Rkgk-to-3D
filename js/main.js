@@ -320,6 +320,7 @@ function renderChips() {
 function renderCard() {
   const fig = state.selected;
   $('#card').hidden = !fig;
+  $('.app').classList.toggle('card-open', !!fig);
   if (!fig) return;
   const figs = placed(), i = figs.indexOf(fig);
   $('#card-dot').style.setProperty('--c', fig.color);
@@ -343,10 +344,13 @@ function renderCard() {
 }
 
 function select(fig) {
+  const wasOpen = !!state.selected;
   state.selected = fig ?? null;
   viewer.select(state.selected?.det ? state.selected : null);
   renderChips();
   renderCard();
+  // 패널이 열리거나 닫히면 3D 영역 크기가 바뀌므로, 자동 맞춤 중이면 새 크기에 맞춰 다시 맞춘다
+  if (wasOpen !== !!state.selected && state.autoFrame) requestAnimationFrame(() => requestAnimationFrame(() => viewer.frameAll()));
 }
 
 function move(fig, dir) {
