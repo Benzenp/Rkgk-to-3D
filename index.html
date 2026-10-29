@@ -139,6 +139,14 @@
           <span class="label">회전 <output id="yaw-val">0°</output></span>
           <input id="yaw" type="range" min="-180" max="180" step="1" value="0">
         </div>
+        <div class="field">
+          <span class="label">앞뒤 기울기 <output id="pitch-val">0°</output></span>
+          <input id="pitch" type="range" min="-90" max="90" step="1" value="0" title="+ 앞으로 숙이기, − 뒤로 젖히기">
+        </div>
+        <div class="field">
+          <span class="label">옆 기울기 <output id="roll-val">0°</output></span>
+          <input id="roll" type="range" min="-90" max="90" step="1" value="0" title="+ 인형의 오른쪽으로, − 왼쪽으로">
+        </div>
         <div class="pills">
           <button id="reset-pos" class="ghost text">배치 되돌리기</button>
           <button id="reset-joints" class="ghost text">관절 되돌리기</button>

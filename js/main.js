@@ -30,7 +30,7 @@ const BONES_2D = [[0, 11], [0, 12], [11, 12], [11, 13], [13, 15], [12, 14], [14,
 const persons = COLORS.map((color, id) => ({
   id, color, name: `인물 ${id + 1}`,
   mannequin: null, box: null, det: null, px: null, anchor: null, low: [],
-  flips: {}, offset: new THREE.Vector3(), scale: 1, yaw: 0, auto: new THREE.Vector3(), dirty: false,
+  flips: {}, offset: new THREE.Vector3(), scale: 1, yaw: 0, pitch: 0, roll: 0, auto: new THREE.Vector3(), dirty: false,
   sex: 'female', style: 'anime', bodyKind: null,
   candidates: [], pick: null, // 인식 후보들과, 사용자가 고른 해석(전처리 이름). null이면 점수가 가장 높은 것
   // 사용자가 그림이나 3D에서 옮긴 관절: 관절 번호 → 인식 결과에 더할 이동량(m, three.js 축, 앞뒤 반전 전 기준)
@@ -125,7 +125,7 @@ let sceneNow = null;
 function sceneState() {
   return {
     persons: persons.map((p) => ({
-      offset: p.offset.clone(), yaw: p.yaw, scale: p.scale,
+      offset: p.offset.clone(), yaw: p.yaw, pitch: p.pitch, roll: p.roll, scale: p.scale,
       edits: Object.fromEntries(Object.entries(p.edits).map(([i, d]) => [i, d.clone()])),
     })),
     lights: Object.fromEntries(Object.entries(viewer.lights).map(([k, l]) => [k, { dir: l.dir.clone(), on: l.light.visible }])),
@@ -150,6 +150,8 @@ function applyScene(s) {
     const p = persons[i];
     p.offset.copy(q.offset);
     p.yaw = q.yaw;
+    p.pitch = q.pitch;
+    p.roll = q.roll;
     p.scale = q.scale;
     p.edits = Object.fromEntries(Object.entries(q.edits).map(([j, d]) => [j, d.clone()]));
   });
@@ -353,6 +355,12 @@ function diag2d(pts) {
 }
 
 // 그림 속 위치를 그대로 옮겨 배치한다. 모든 인물이 같은 축척을 쓰고, 사용자가 옮긴 만큼은 유지한다.
+// 인형 전체의 방향: 제자리 회전(yaw) 뒤에, 인형 기준으로 앞뒤(pitch)·옆(roll)으로 기울인다. 축은 발밑의 기준점.
+function applyTurn(f) {
+  const D = THREE.MathUtils.degToRad;
+  f.mannequin.root.rotation.set(D(f.pitch), D(f.yaw), D(f.roll), 'YXZ');
+}
+
 function layout() {
   const figs = placed();
   const ratios = [];
@@ -381,7 +389,7 @@ function layout() {
     f.auto.copy(root.position);
     root.position.add(f.offset);
     root.scale.setScalar(f.scale);
-    root.rotation.y = THREE.MathUtils.degToRad(f.yaw);
+    applyTurn(f);
   });
 }
 
@@ -562,6 +570,10 @@ function renderCard() {
 function setYawLabel(fig) {
   $('#yaw').value = fig.yaw;
   $('#yaw-val').textContent = `${fig.yaw}°`;
+  for (const k of ['pitch', 'roll']) {
+    $(`#${k}`).value = fig[k];
+    $(`#${k}-val`).textContent = `${fig[k]}°`;
+  }
 }
 
 function select(fig) {
@@ -621,6 +633,8 @@ async function exportZip() {
       hips_position_cm: hips.toArray().map((n) => +(n * 100).toFixed(1)),
       scale: f.scale,
       rotation_y_deg: f.yaw,
+      tilt_forward_deg: f.pitch,
+      tilt_side_deg: f.roll,
       body: f.bodyKind,
       flips: f.flips,
       low_confidence: f.low,
@@ -649,7 +663,7 @@ camera.json 카메라 수치, 주·보조 광원 방향, 인물별 위치·크�
    방향은 광원 공을 light-ball.png처럼 보이게 끌어 맞춘다. 클립 스튜디오의 공이 화면 기준이면 "카메라에서 본 공", 장면 기준이면 "정면에서 본 공"을 본다 (azimuth: 정면에서 오른쪽으로 잰 각도, elevation: 바닥에서 위로 잰 각도). on이 false면 그 광원은 끈다.
 6. 손끝 같은 세부는 클립 스튜디오에서 조정한다.
 
-웹에서 돌린 방향은 BVH에 담기지만, 바꾼 크기는 BVH에 담기지 않는다. 데생 인형 크기는 camera.json의 scale을 보고 맞춘다.
+웹에서 돌리거나 기울인 방향은 BVH에 담기지만, 바꾼 크기는 BVH에 담기지 않는다. 데생 인형 크기는 camera.json의 scale을 보고 맞춘다.
 `;
 
 // --- 왼쪽 UI 연결 ---
@@ -777,16 +791,27 @@ $('#yaw').addEventListener('input', () => {
   const f = state.selected;
   if (!f) return;
   f.yaw = +$('#yaw').value;
-  f.mannequin.root.rotation.y = THREE.MathUtils.degToRad(f.yaw);
+  applyTurn(f);
   viewer.updateShadows();
   setYawLabel(f);
 });
+for (const k of ['pitch', 'roll']) {
+  $(`#${k}`).addEventListener('input', () => {
+    const f = state.selected;
+    if (!f) return;
+    f[k] = +$(`#${k}`).value;
+    applyTurn(f);
+    viewer.updateShadows();
+    setYawLabel(f);
+  });
+  $(`#${k}`).addEventListener('change', commitScene);
+}
 $('#reset-pos').addEventListener('click', () => {
   const f = state.selected;
   if (!f) return;
   f.offset.set(0, 0, 0);
   f.scale = 1;
-  f.yaw = 0;
+  f.yaw = f.pitch = f.roll = 0;
   endEdit();
 });
 $('#reset-joints').addEventListener('click', () => {
